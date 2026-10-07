@@ -1,0 +1,23 @@
+{"hook_event_name": "SessionStart", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project"}
+{"hook_event_name": "UserPromptSubmit", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "prompt": "PRIVATE_PROMPT_8431 please fix the tests"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 1, "stdout": "PRIVATE_OUTPUT_9823 failed"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_input": {"command": "swift test --filter ExampleTests"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "tool_name": "Bash", "tool_response": {"exit_code": 0, "stdout": "PRIVATE_OUTPUT_9823 passed"}}
+{"hook_event_name": "Stop", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "last_assistant_message": "PRIVATE_CLOSING_7182 fixed the failing tests", "status": "completed"}

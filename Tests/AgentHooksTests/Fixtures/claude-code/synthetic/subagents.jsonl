@@ -1,0 +1,12 @@
+{"hook_event_name": "SessionStart", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "source": "startup"}
+{"hook_event_name": "UserPromptSubmit", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "prompt": "PRIVATE_PROMPT_5151 fix nav and footer in parallel"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "agent_id": "a1", "agent_type": "general-purpose", "tool_name": "Bash", "tool_input": {"command": "PRIVATE_COMMAND_6161"}}
+{"hook_event_name": "PermissionRequest", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "agent_id": "a1", "agent_type": "general-purpose", "tool_name": "Bash", "tool_input": {"command": "PRIVATE_COMMAND_6161"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "agent_id": "a2", "agent_type": "general-purpose", "tool_name": "Read", "tool_input": {"file_path": "/tmp/landing/footer.tsx"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "agent_id": "a2", "agent_type": "general-purpose", "tool_name": "Read", "tool_input": {"file_path": "/tmp/landing/footer.tsx"}, "tool_response": {"file": "PRIVATE_OUTPUT_7171"}}
+{"wait_ms": 3000}
+{"hook_event_name": "Notification", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "notification_type": "permission_prompt", "message": "PRIVATE_MESSAGE_8181"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "agent_id": "a2", "agent_type": "general-purpose", "tool_name": "Edit", "tool_input": {"file_path": "/tmp/landing/footer.tsx"}}
+{"wait_ms": 60000}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "agent_id": "a1", "agent_type": "general-purpose", "tool_name": "Bash", "tool_input": {"command": "PRIVATE_COMMAND_6161"}, "tool_response": {"stdout": "PRIVATE_OUTPUT_9191"}}
+{"hook_event_name": "Stop", "session_id": "fixture-claude-sub", "cwd": "/tmp/landing", "last_assistant_message": "PRIVATE_CLOSING_1212"}

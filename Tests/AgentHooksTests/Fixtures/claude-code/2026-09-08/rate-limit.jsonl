@@ -1,0 +1,4 @@
+{"hook_event_name": "SessionStart", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project"}
+{"hook_event_name": "StopFailure", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "error": "rate_limit", "last_assistant_message": "PRIVATE_CLOSING_7182 API error"}
+{"hook_event_name": "StopFailure", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "error": "rate_limit", "last_assistant_message": "PRIVATE_CLOSING_7182 API error"}
+{"hook_event_name": "StopFailure", "session_id": "fixture-claude-code", "cwd": "/tmp/fixture-project", "error": "rate_limit", "last_assistant_message": "PRIVATE_CLOSING_7182 API error"}

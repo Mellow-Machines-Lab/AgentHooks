@@ -1,0 +1,8 @@
+{"hook_event_name": "SessionStart", "session_id": "fixture-codex-b", "cwd": "/tmp/landing", "source": "startup"}
+{"hook_event_name": "UserPromptSubmit", "session_id": "fixture-codex-b", "cwd": "/tmp/landing", "prompt": "PRIVATE_PROMPT_1234 deploy it"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-codex-b", "cwd": "/tmp/landing", "tool_name": "shell", "tool_input": {"command": ["bash", "-lc", "vercel --prod"]}}
+{"hook_event_name": "PermissionRequest", "session_id": "fixture-codex-b", "cwd": "/tmp/landing", "tool_name": "shell", "tool_input": {"command": ["bash", "-lc", "PRIVATE_COMMAND_5678"]}}
+{"wait_ms": 10000}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-codex-b", "cwd": "/tmp/landing", "tool_name": "shell", "tool_response": "PRIVATE_OUTPUT_9012"}
+{"wait_ms": 40000}
+{"hook_event_name": "Stop", "session_id": "fixture-codex-b", "cwd": "/tmp/landing", "last_assistant_message": "PRIVATE_CLOSING_3456"}

@@ -1,0 +1,20 @@
+{"hook_event_name": "SessionStart", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "source": "startup"}
+{"hook_event_name": "UserPromptSubmit", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "prompt": "PRIVATE_PROMPT_5252 check nav and footer in parallel"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "tool_name": "Agent", "tool_use_id": "toolu_main1", "tool_input": {"prompt": "PRIVATE_PROMPT_5353"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "tool_name": "Agent", "tool_use_id": "toolu_main2", "tool_input": {"prompt": "PRIVATE_PROMPT_5454"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "agent_id": "a1", "agent_type": "general-purpose", "tool_name": "Bash", "tool_use_id": "toolu_a1", "tool_input": {"command": "PRIVATE_COMMAND_6262"}}
+{"hook_event_name": "PermissionRequest", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "agent_id": "a1", "agent_type": "general-purpose", "tool_name": "Bash", "tool_input": {"command": "PRIVATE_COMMAND_6262"}}
+{"hook_event_name": "Notification", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "notification_type": "permission_prompt", "message": "PRIVATE_MESSAGE_8282"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "agent_id": "a2", "agent_type": "Explore", "tool_name": "Read", "tool_use_id": "toolu_a2", "tool_input": {"file_path": "/tmp/landing/footer.tsx"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "agent_id": "a2", "agent_type": "Explore", "tool_name": "Read", "tool_use_id": "toolu_a2", "tool_input": {"file_path": "/tmp/landing/footer.tsx"}, "tool_response": {"file": "PRIVATE_OUTPUT_7272"}}
+{"hook_event_name": "SubagentStop", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "stop_hook_active": false, "agent_id": "a2", "agent_type": "Explore", "agent_transcript_path": "/tmp/PRIVATE_PATH_a2.jsonl", "last_assistant_message": "PRIVATE_CLOSING_7373"}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "tool_name": "Agent", "tool_use_id": "toolu_main2", "tool_input": {"prompt": "PRIVATE_PROMPT_5454"}, "tool_response": {"content": "PRIVATE_OUTPUT_7474"}}
+{"wait_ms": 20000}
+{"hook_event_name": "SubagentStop", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "stop_hook_active": false, "agent_id": "a1", "agent_type": "general-purpose", "agent_transcript_path": "/tmp/PRIVATE_PATH_a1.jsonl", "last_assistant_message": "PRIVATE_CLOSING_7575"}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "tool_name": "Agent", "tool_use_id": "toolu_main1", "tool_input": {"prompt": "PRIVATE_PROMPT_5353"}, "tool_response": {"content": "PRIVATE_OUTPUT_7676"}}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "tool_name": "Edit", "tool_use_id": "toolu_main3", "tool_input": {"file_path": "/tmp/landing/nav.tsx"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "tool_name": "Edit", "tool_use_id": "toolu_main3", "tool_input": {"file_path": "/tmp/landing/nav.tsx"}, "tool_response": {"filePath": "PRIVATE_PATH_7777"}}
+{"hook_event_name": "Stop", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "last_assistant_message": "PRIVATE_CLOSING_7878"}
+{"wait_ms": 5000}
+{"hook_event_name": "SubagentStop", "session_id": "fixture-claude-deny", "cwd": "/tmp/landing", "stop_hook_active": false, "agent_id": "a3", "agent_type": "general-purpose", "agent_transcript_path": "/tmp/PRIVATE_PATH_a3.jsonl", "last_assistant_message": "PRIVATE_CLOSING_7979"}
+{"wait_ms": 60000}

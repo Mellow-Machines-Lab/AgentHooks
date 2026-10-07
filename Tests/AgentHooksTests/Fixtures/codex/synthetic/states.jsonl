@@ -1,0 +1,14 @@
+# A Codex session through everything its hooks report: no searching,
+# subagents or errors, which they don't report.
+{"hook_event_name": "SessionStart", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "source": "resume"}
+{"hook_event_name": "UserPromptSubmit", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "prompt": "PRIVATE_PROMPT_3101 fix the flaky test"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_input": {"command": ["bash", "-lc", "nl -ba src/nav.ts | sed -n '1,80p'"]}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_response": "PRIVATE_OUTPUT_3102"}
+{"advance_ms": 2000}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_input": {"command": ["bash", "-lc", "cargo test"]}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_response": "PRIVATE_OUTPUT_3103"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "apply_patch", "tool_input": {"input": "*** Begin Patch\n*** Update File: src/nav.ts\n@@\n-PRIVATE_OLD_3104\n+PRIVATE_NEW_3105\n*** End Patch"}}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "apply_patch", "tool_response": "PRIVATE_OUTPUT_3106"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_input": {"command": ["bash", "-lc", "cargo build --release"]}}
+{"advance_ms": 25000}
+{"hook_event_name": "Interrupt", "session_id": "fixture-codex-states", "cwd": "/tmp/landing"}

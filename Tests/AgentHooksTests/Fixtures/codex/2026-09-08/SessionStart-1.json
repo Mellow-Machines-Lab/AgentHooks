@@ -1,0 +1,6 @@
+{
+    "session_id": "abc123",
+    "cwd": "~/project",
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+}

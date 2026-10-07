@@ -1,0 +1,9 @@
+{"hook_event_name": "SessionStart", "session_id": "fixture-claude-p", "cwd": "/tmp/jetpack", "source": "startup"}
+{"hook_event_name": "UserPromptSubmit", "session_id": "fixture-claude-p", "cwd": "/tmp/jetpack", "prompt": "PRIVATE_PROMPT_8431 run the build"}
+{"hook_event_name": "PreToolUse", "session_id": "fixture-claude-p", "cwd": "/tmp/jetpack", "tool_name": "Bash", "tool_input": {"command": "swift build"}}
+{"hook_event_name": "PermissionRequest", "session_id": "fixture-claude-p", "cwd": "/tmp/jetpack", "tool_name": "Bash", "tool_input": {"command": "PRIVATE_COMMAND_1111"}}
+{"hook_event_name": "Notification", "session_id": "fixture-claude-p", "cwd": "/tmp/jetpack", "notification_type": "permission_prompt", "message": "PRIVATE_MESSAGE_2222"}
+{"wait_ms": 120000}
+{"hook_event_name": "PostToolUse", "session_id": "fixture-claude-p", "cwd": "/tmp/jetpack", "tool_name": "Bash", "tool_response": {"stdout": "PRIVATE_OUTPUT_3333"}}
+{"wait_ms": 400000}
+{"hook_event_name": "Stop", "session_id": "fixture-claude-p", "cwd": "/tmp/jetpack", "last_assistant_message": "PRIVATE_CLOSING_4444"}
