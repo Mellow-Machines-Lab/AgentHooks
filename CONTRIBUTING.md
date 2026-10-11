@@ -9,6 +9,11 @@ swift build
 swift test
 ```
 
+With the Command Line Tools and no Xcode, `swift test` sometimes fails
+with "plugin for module 'TestingMacros' not found" (or "external macro
+implementation … TestingMacros"). It's a toolchain flake: run it again
+and it passes.
+
 ## A few rules
 
 - **Foundation only.** The package has no dependencies, and should keep

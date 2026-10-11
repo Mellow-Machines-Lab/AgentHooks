@@ -27,7 +27,8 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
-/// Options by name, the flags given, and the rest in order.
+/// Options by name, the flags given, and the rest in order. `--help`
+/// anywhere prints the usage and stops.
 struct Arguments {
     var options: [String: String] = [:]
     var flags: Set<String> = []
@@ -36,7 +37,10 @@ struct Arguments {
     init(_ raw: ArraySlice<String>, options known: Set<String>, flags knownFlags: Set<String>) {
         var rest = raw
         while let word = rest.popFirst() {
-            if known.contains(word) {
+            if word == "-h" || word == "--help" {
+                print(usage)
+                exit(0)
+            } else if known.contains(word) {
                 guard let value = rest.popFirst() else { fail("\(word) needs a value") }
                 options[word] = value
             } else if knownFlags.contains(word) {
