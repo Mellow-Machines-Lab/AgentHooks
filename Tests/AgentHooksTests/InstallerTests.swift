@@ -93,7 +93,7 @@ import Testing
         ]))
         #expect((HookInstaller.events[.codex]!.map { $0.event + ($0.matcher.map { " " + $0 } ?? "") }) == ([
             "SessionStart startup|resume|clear", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest",
-            "Stop", "Interrupt", "SessionEnd",
+            "Stop", "Interrupt", "PostCompact", "SessionEnd",
         ]))
     }
 

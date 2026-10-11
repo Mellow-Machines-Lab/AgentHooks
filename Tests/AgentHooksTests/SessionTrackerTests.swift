@@ -26,6 +26,15 @@ import Testing
         return tracker.sessions[key] == nil ? "gone" : "idle"
     }
 
+    /// A context compacted mid-turn is a session start that changes
+    /// nothing: the turn works on.
+    @Test func aCompactedContextLeavesTheTurnWorking() {
+        send(.session, .start, "SessionStart") { $0.source = "startup" }
+        send(.turn, .start, "UserPromptSubmit")
+        #expect(send(.session, .start, "PostCompact", { $0.source = Mapping.compacted }) == .sessionStarted(source: "compact"))
+        #expect(state() == "working")
+    }
+
     @Test func aTurnWorksThenGoesIdle() {
         #expect(send(.session, .start, "SessionStart") { $0.source = "resume" } == .sessionStarted(source: "resume"))
         #expect(state() == "idle")

@@ -1,6 +1,6 @@
 # How agent-hooks works
 
-Updated 2026-10-07. [README.md](README.md) is the short version. This is
+Updated 2026-10-11. [README.md](README.md) is the short version. This is
 the tour: how the hooks get installed, what happens each time one fires,
 and how that becomes a list of sessions. The code and its tests have
 every rule.
@@ -23,7 +23,7 @@ The sections follow that path, left to right.
 | File | What it adds |
 | --- | --- |
 | `~/.claude/settings.json` | An entry for each of Claude Code's 14 hooks |
-| `~/.codex/hooks.json` | An entry for each of Codex's 8 hooks |
+| `~/.codex/hooks.json` | An entry for each of Codex's 9 hooks |
 | `~/.codex/config.toml` | `codex_hooks = true`, which Codex needs to run hooks at all |
 
 Every entry runs the `agent-hook` sitting next to `agent-hooks`. So copy
@@ -140,6 +140,7 @@ it's about) and a **phase** (where that thing is):
 | Hook | Claude Code | Codex | Becomes |
 | --- | :---: | :---: | --- |
 | `SessionStart` | ✓ | ✓ | `session` start |
+| `PostCompact` | | ✓ | `session` start, its `source` `compact`, as Claude's `SessionStart` says after compacting |
 | `UserPromptSubmit` | ✓ | ✓ | `turn` start |
 | `PreToolUse` | ✓ | ✓ | `tool` start |
 | `PermissionRequest` | ✓ | ✓ | `tool` wait, asking for `permission` |

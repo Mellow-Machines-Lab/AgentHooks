@@ -84,6 +84,7 @@ Each event says two things:
 | What happened | Claude Code's hook | Codex's hook | The event |
 | --- | --- | --- | --- |
 | A session opened | `SessionStart` | `SessionStart` | `session` `start` |
+| Its context was compacted | `SessionStart` | `PostCompact` | `session` `start`, with `source` `compact` |
 | You sent a prompt | `UserPromptSubmit` | `UserPromptSubmit` | `turn` `start` |
 | A tool is about to run | `PreToolUse` | `PreToolUse` | `tool` `start` |
 | The agent asks your permission | `PermissionRequest` | `PermissionRequest` | `tool` `wait` |

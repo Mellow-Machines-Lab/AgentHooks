@@ -13,7 +13,9 @@ Raw hook payloads, one directory per agent:
   grace period) or that wait for a person; and `states.jsonl` for each
   agent, a session through everything that agent's hooks report, with
   `permission_mode`, `SubagentStart` and a resumed `SessionStart`'s
-  `source` in the shape Claude's hook reference gives, not yet recorded.
+  `source` in the shape Claude's hook reference gives, not yet recorded,
+  and Codex's `PostCompact` in the shape its hooks give (lifecycle
+  metadata only), not yet recorded.
 
 A line `{"wait_ms": N}` moves a replay's clock. `WireTests` walks every
 file and checks that only your prompt and the agent's last message reach
