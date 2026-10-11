@@ -48,7 +48,8 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     public var mode: String?
 
     // By kind and phase.
-    /// A session start's source: `startup`, `resume`, `clear` or `compact`.
+    /// A session start's source: `startup`, `resume`, `clear` or `compact`
+    /// (its context was compacted, and the work goes on).
     public var source: String?
     /// A turn start's prompt, with `--keep-text`.
     public var prompt: String?

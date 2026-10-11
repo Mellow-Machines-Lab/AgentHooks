@@ -32,7 +32,22 @@ import Testing
         #expect(shape(line("claude", "PreCompact")) == nil)
         #expect(shape(line("cursor", "Stop")) == nil, "an agent it doesn't know")
         #expect(Mapping.hooks(.claude).count == 14)
-        #expect(Mapping.hooks(.codex).count == 8)
+        #expect(Mapping.hooks(.codex).count == 9)
+    }
+
+    /// A compacted context is a session start with `source` `compact`
+    /// from both agents: Claude's `SessionStart` says so itself, and
+    /// Codex's `PostCompact` is nothing else.
+    @Test func aCompactedContextIsASessionStartFromBoth() throws {
+        let claude = try #require(Mapping.event(from: line("claude", "SessionStart") { $0.source = "compact" }))
+        let codex = try #require(Mapping.event(from: line("codex", "PostCompact")))
+        for e in [claude, codex] {
+            #expect(e.kind == .session)
+            #expect(e.phase == .start)
+            #expect(e.source == Mapping.compacted)
+        }
+        #expect(Mapping.event(from: line("codex", "SessionStart") { $0.source = "resume" })?.source == "resume")
+        #expect(shape(line("codex", "PreCompact")) == nil, "only the compaction that finished")
     }
 
     @Test func aTurnSaysHowItEnded() throws {

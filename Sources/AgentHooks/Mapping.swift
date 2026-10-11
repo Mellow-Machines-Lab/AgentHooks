@@ -40,7 +40,9 @@ public enum Mapping {
     public static let notificationTypes = askingNotifications + [idleNotification]
 
     /// Codex's hooks, in the order the installer adds them. Codex has no
-    /// failure hook; `Interrupt` is you pressing Esc.
+    /// failure hook; `Interrupt` is you pressing Esc. `PostCompact` is its
+    /// context compacted, which Claude says with a `SessionStart` whose
+    /// `source` is `compact`: both become that.
     public static let codex: [(hook: String, kind: Kind)] = [
         ("SessionStart", (.session, .start)),
         ("UserPromptSubmit", (.turn, .start)),
@@ -49,8 +51,12 @@ public enum Mapping {
         ("PermissionRequest", (.tool, .wait)),
         ("Stop", (.turn, .end)),
         ("Interrupt", (.turn, .end)),
+        ("PostCompact", (.session, .start)),
         ("SessionEnd", (.session, .end)),
     ]
+
+    /// A session start's `source` once its context was compacted.
+    public static let compacted = "compact"
 
     static let claudeByHook = Dictionary(uniqueKeysWithValues: claude.map { ($0.hook, $0.kind) })
     static let codexByHook = Dictionary(uniqueKeysWithValues: codex.map { ($0.hook, $0.kind) })
@@ -97,7 +103,7 @@ public enum Mapping {
         }
         switch (kind, phase) {
         case (.session, .start):
-            e.source = line.source
+            e.source = line.hook == "PostCompact" ? compacted : line.source
         case (.turn, .start):
             e.prompt = line.prompt
         case (.tool, .start):

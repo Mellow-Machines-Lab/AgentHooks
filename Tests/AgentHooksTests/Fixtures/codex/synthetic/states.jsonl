@@ -4,6 +4,7 @@
 {"hook_event_name": "UserPromptSubmit", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "prompt": "PRIVATE_PROMPT_3101 fix the flaky test"}
 {"hook_event_name": "PreToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_input": {"command": ["bash", "-lc", "nl -ba src/nav.ts | sed -n '1,80p'"]}}
 {"hook_event_name": "PostToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_response": "PRIVATE_OUTPUT_3102"}
+{"hook_event_name": "PostCompact", "session_id": "fixture-codex-states", "turn_id": "fixture-turn-1", "transcript_path": "/tmp/codex/sessions/fixture-codex-states.jsonl", "cwd": "/tmp/landing", "model": "fixture-model", "trigger": "auto"}
 {"advance_ms": 2000}
 {"hook_event_name": "PreToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_input": {"command": ["bash", "-lc", "cargo test"]}}
 {"hook_event_name": "PostToolUse", "session_id": "fixture-codex-states", "cwd": "/tmp/landing", "tool_name": "shell", "tool_response": "PRIVATE_OUTPUT_3103"}
