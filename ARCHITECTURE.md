@@ -46,12 +46,14 @@ agent and reports one of:
 
 | Health | Meaning |
 | --- | --- |
-| installed | The entries are exactly what a fresh install would write |
-| outdated | Some are missing or old, say after an update added a hook |
-| not installed | None of its entries are there |
-| hooks off | Its entries are there, but you turned the agent's hooks off |
-| client missing | There's no `agent-hook` where the entries point |
-| unreadable | The settings file is there but isn't valid, so it's left alone |
+| `installed` | The entries are exactly what a fresh install would write |
+| `installed, keeping text` | The same, installed with `--keep-text` |
+| `outdated: run agent-hooks install` | Some are missing or old, say after an update added a hook |
+| `not installed` | None of its entries are there |
+| `installed, but hooks are turned off in FILE` | Its entries are there, but you turned the agent's hooks off |
+| `no agent-hook at the path given` | There's no `agent-hook` where the entries point |
+| `unreadable: WHY` | The settings file is there but isn't valid, so it's left alone |
+| `not found` | The agent's folder (`~/.claude` or `~/.codex`) isn't there |
 
 An app can use the library's `HookInstaller` to **repair** outdated
 entries every time it launches. Repair never installs for an agent that
@@ -201,55 +203,16 @@ Each is **working**, **idle** or **needs you**, with its project and
 workspace (from the folder's git repository, branch or worktree), its
 running tool calls and its subagents.
 
-Here's Claude asking to run the tests, as `agent-hooks tail --sessions`
-printed it. First the tool call starts:
+Here's Claude asking to run the tests in a worktree, as
+`agent-hooks tail --sessions` printed it, one line each. The tool call
+starts, and the session is working; then Claude asks permission, and the
+session needs you:
 
 ```json
-{
-  "agent": "claude",
-  "kind": "tool",
-  "phase": "start",
-  "hook": "PreToolUse",
-  "session": "s1",
-  "tool": "Bash",
-  "tool_use_id": "toolu_1",
-  "topic": "tests",
-  "cwd": "/Users/you/src/landing",
-  "app": "com.mitchellh.ghostty",
-  "mode": "default",
-  "at": 1790755424947
-}
-```
-
-Then Claude asks permission:
-
-```json
-{
-  "agent": "claude",
-  "kind": "tool",
-  "phase": "wait",
-  "asking": "permission",
-  "hook": "PermissionRequest",
-  "session": "s1",
-  "tool": "Bash",
-  "cwd": "/Users/you/src/landing",
-  "app": "com.mitchellh.ghostty",
-  "mode": "default",
-  "at": 1790755425280
-}
-```
-
-And the session needs you:
-
-```json
-{
-  "session": "claude/s1",
-  "state": "needs_you",
-  "asking": "permission",
-  "project": "landing",
-  "workspace": "fix-nav",
-  "at": 1790755425280
-}
+{"agent":"claude","app":"com.mitchellh.ghostty","at":1791707045939,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PreToolUse","kind":"tool","mode":"default","phase":"start","session":"s1","tool":"Bash","tool_use_id":"toolu_1","topic":"tests"}
+{"at":1791707045939,"project":"landing","session":"claude/s1","state":"working","workspace":"fix-nav"}
+{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707046252,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","tool":"Bash"}
+{"asking":"permission","at":1791707046252,"project":"landing","session":"claude/s1","state":"needs_you","workspace":"fix-nav"}
 ```
 
 ### Why "needs you" is the hard part
@@ -277,12 +240,15 @@ happened.
 | --- | --- |
 | `agent-hooks install [claude\|codex] [--keep-text] [--hook PATH]` | Adds the hooks for the agent named, or every one found |
 | `agent-hooks remove [claude\|codex]` | Takes its entries out, leaving `codex_hooks = true` on |
-| `agent-hooks status` | Each agent's health, and the apps listening |
+| `agent-hooks status [--hook PATH]` | Each agent's health, and the apps listening |
 | `agent-hooks tail [--sessions] [--name NAME]` | Prints every event, and with `--sessions` each session's state as it changes |
-| `agent-hooks doctor` | `status`, then a made-up hook through the client, to check it works |
+| `agent-hooks doctor [--hook PATH]` | `status`, then a made-up hook through the client, to check it works |
 
 `--home DIR` points `install`, `remove`, `status` and `doctor` at
-another home folder (the default is `$HOME`).
+another home folder (the default is `$HOME`). `--hook PATH` is the
+`agent-hook` that `install` writes into the entries, and that `status`
+and `doctor` check (the default is the one next to `agent-hooks`).
+`--help` after any command prints them all.
 
 Two examples to steal:
 
@@ -296,7 +262,7 @@ Two examples to steal:
 Add it to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/Mellow-Machines-Lab/AgentHooks.git", from: "1.0.0"),
+.package(url: "https://github.com/Mellow-Machines-Lab/AgentHooks.git", from: "1.0.1"),
 // and in a target's dependencies:
 .product(name: "AgentHooks", package: "AgentHooks"),
 ```

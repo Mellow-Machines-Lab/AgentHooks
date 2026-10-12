@@ -129,7 +129,7 @@ The command is gone; the app the agent runs in is added:
   "mode": "default",
   "session": "s1",
   "tool": "Bash",
-  "ts": 1790755425280
+  "ts": 1791707031722
 }
 ```
 
@@ -148,21 +148,16 @@ The command is gone; the app the agent runs in is added:
   "cwd": "/Users/you/src/landing",
   "app": "com.mitchellh.ghostty",
   "mode": "default",
-  "at": 1790755425280
+  "at": 1791707031722
 }
 ```
 
-**4. The session needs you.** `agent-hooks tail --sessions` shows the
-event above, then the session's new state:
+**4. The session needs you.** `agent-hooks tail --sessions` prints the
+event above, then the session's new state, each as one line:
 
 ```json
-{
-  "session": "claude/s1",
-  "state": "needs_you",
-  "asking": "permission",
-  "project": "landing",
-  "at": 1790755425280
-}
+{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707031722,"cwd":"/Users/you/src/landing","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","tool":"Bash"}
+{"asking":"permission","at":1791707031722,"project":"landing","session":"claude/s1","state":"needs_you"}
 ```
 
 When you approve, the tests run and `PostToolUse` arrives as a `tool`
@@ -189,7 +184,10 @@ have it).
 
 2. **Install the hooks** with `~/.local/bin/agent-hooks install`. It
    edits `~/.claude/settings.json`, `~/.codex/hooks.json` and
-   `~/.codex/config.toml`. Then restart your open agent sessions so they
+   `~/.codex/config.toml`, for each agent whose folder is there. With
+   neither folder, it stops with `agent-hooks: found neither ~/.claude
+   nor ~/.codex; name the agent`: name it (`agent-hooks install claude`)
+   or create its folder. Then restart your open agent sessions so they
    pick the hooks up.
 3. **Watch.** With `~/.local/bin` on your `PATH`, run `Examples/watch.sh`
    and see the GIF above happen for real.
@@ -206,14 +204,15 @@ have it).
 | Get a macOS notification when one needs you | `Examples/needs-you-notify.sh` |
 | Take the hooks out again | `agent-hooks remove` |
 
-`agent-hooks --help` lists every flag.
+`agent-hooks --help` lists every flag, and so does `--help` after any
+command.
 
 ### From your own app
 
 In Swift, add this package and use its `AgentHooks` library:
 
 ```swift
-.package(url: "https://github.com/Mellow-Machines-Lab/AgentHooks.git", from: "1.0.0"),
+.package(url: "https://github.com/Mellow-Machines-Lab/AgentHooks.git", from: "1.0.1"),
 // and in a target's dependencies:
 .product(name: "AgentHooks", package: "AgentHooks"),
 ```
