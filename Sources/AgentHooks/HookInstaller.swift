@@ -45,7 +45,8 @@ public struct HookInstaller {
         .codex: ["SessionStart": "startup|resume|clear"],
     ]
     /// Seconds. `agent-hook` finishes in milliseconds and gives up after one.
-    static let timeout = 5
+    /// Codex allows no more than 3 for some hooks, and says so at every start.
+    static let timeout = 3
 
     /// The client's name, which every entry runs.
     public static let client = "agent-hook"
@@ -114,6 +115,8 @@ public struct HookInstaller {
         case .codex where Self.codexHooksOff(in: (try? codexConfig.get()) ?? ""): return .hooksOff(codexConfigURL.path)
         default: break
         }
+        // The switch under its old name, which Codex warns about, is something to repair.
+        if agent == .codex, Self.codexHooksUnderOldName(in: (try? codexConfig.get()) ?? "") { return .outdated }
         let fresh = installing(agent, into: [:])["hooks"] as? [String: Any] ?? [:]
         return NSDictionary(dictionary: ours).isEqual(to: fresh) ? .installed : .outdated
     }
@@ -131,11 +134,11 @@ public struct HookInstaller {
             if case .failure(let why) = config { return text + "\n\nNothing is added: \(why)" }
             switch Result(catching: { try Self.enablingCodexHooks(in: config.get()) }) {
             case .success(nil): break
-            case .success: text += "\n\nIn \(codexConfigURL.path), under [features]:\ncodex_hooks = true"
+            case .success: text += "\n\nIn \(codexConfigURL.path), under [features]:\nhooks = true"
             case .failure(let why) where why as? Refusal == Self.codexHooksTurnedOff: text += "\n\nNothing is added: \(why)"
             case .failure(let why):
                 let place = why as? Refusal == Self.inlineFeatures ? "inside features = { … }" : "under [features] (\(why))"
-                text += "\n\nNothing is added until you put this in \(codexConfigURL.path), \(place):\ncodex_hooks = true"
+                text += "\n\nNothing is added until you put this in \(codexConfigURL.path), \(place):\nhooks = true"
             }
         }
         return text
@@ -276,23 +279,27 @@ public struct HookInstaller {
         catch { return .failure(Refusal(error.localizedDescription)) }
     }
 
-    /// Codex runs hooks only with `codex_hooks = true` under `[features]`.
-    /// Installing adds the line if it's missing and never removes it: other
+    /// Codex runs hooks only with `hooks = true` under `[features]`, a key
+    /// once named `codex_hooks`, which Codex still reads but warns about at
+    /// every start. Installing turns it on if it's off and moves an old
+    /// `codex_hooks = true` to the new name, and never removes it: other
     /// hooks may rely on it.
     ///
-    /// `toml` with `codex_hooks = true` in `features`, or nil if it's
-    /// already there. It finds the table however it's written (`[features]`,
-    /// `[ features ] # note`, or top-level `features.x = …` keys) and never
-    /// declares it twice, which Codex refuses to load. It throws while the
-    /// person has the hooks turned off there, which is never undone, and
-    /// for a shape it won't edit (an inline `features = {…}` without the
-    /// key), so the line is added by hand.
+    /// `toml` with `hooks = true` in `features`, or nil if it's already
+    /// there under that name. It finds the table however it's written
+    /// (`[features]`, `[ features ] # note`, or top-level `features.x = …`
+    /// keys) and never declares it, or the key, twice, which Codex refuses
+    /// to load. It throws while the person has the hooks turned off there,
+    /// which is never undone, and for a shape it won't edit (an inline
+    /// `features = {…}` without the key), so the line is added by hand.
     static func enablingCodexHooks(in toml: String) throws -> String? {
         if codexHooksOff(in: toml) { throw codexHooksTurnedOff }
         var lines = toml.components(separatedBy: "\n")
         var section: String?  // nil at the top level
         var featuresAt: Int?
         var lastDotted: Int?
+        var current: (at: Int, on: Bool, dotted: Bool)?  // `hooks`
+        var old: (at: Int, dotted: Bool)?  // `codex_hooks`
         for (i, raw) in lines.enumerated() {
             let line = uncommented(raw).trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") {
@@ -304,12 +311,12 @@ public struct HookInstaller {
             let key = line[..<eq].filter { !$0.isWhitespace }
             let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
             switch (section, key) {
+            case ("[features]", "hooks"), (nil, "features.hooks"):
+                current = (i, value == "true", section == nil)
             case ("[features]", "codex_hooks"), (nil, "features.codex_hooks"):
-                if value == "true" { return nil }
-                lines[i] = section == nil ? "features.codex_hooks = true" : "codex_hooks = true"
-                return lines.joined(separator: "\n")
+                old = (i, section == nil)
             case (nil, "features"):
-                if value.range(of: #"[{,]\s*codex_hooks\s*=\s*true\s*[,}]"#, options: .regularExpression) != nil {
+                if value.range(of: #"[{,]\s*(codex_)?hooks\s*=\s*true\s*[,}]"#, options: .regularExpression) != nil {
                     return nil
                 }
                 throw inlineFeatures
@@ -319,20 +326,31 @@ public struct HookInstaller {
                 break
             }
         }
+        let line = { (dotted: Bool) in dotted ? "features.hooks = true" : "hooks = true" }
+        if let current {
+            if current.on && old == nil { return nil }
+            lines[current.at] = line(current.dotted)
+            if let old { lines.remove(at: old.at) }
+            return lines.joined(separator: "\n")
+        }
+        if let old {
+            lines[old.at] = line(old.dotted)
+            return lines.joined(separator: "\n")
+        }
         switch (featuresAt, lastDotted) {
         case (.some, .some):
             throw Refusal("features is declared twice already")
         case (.some(let at), nil):
-            lines.insert("codex_hooks = true", at: at + 1)
+            lines.insert("hooks = true", at: at + 1)
             return lines.joined(separator: "\n")
         case (nil, .some(let at)):
-            lines.insert("features.codex_hooks = true", at: at + 1)
+            lines.insert("features.hooks = true", at: at + 1)
             return lines.joined(separator: "\n")
         case (nil, nil):
             var out = toml
             if !out.isEmpty && !out.hasSuffix("\n") { out += "\n" }
             if !out.isEmpty { out += "\n" }
-            return out + "[features]\ncodex_hooks = true\n"
+            return out + "[features]\nhooks = true\n"
         }
     }
 
@@ -352,6 +370,22 @@ public struct HookInstaller {
                 return true
             } else if section == nil, line == "features.hooks=false" || line == "features.codex_hooks=false"
                         || line.range(of: #"^features=\{(.*,)?(codex_)?hooks=false[,}]"#, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Whether `toml` has the switch as `codex_hooks` in a `features` table
+    /// or key that installing can rename.
+    static func codexHooksUnderOldName(in toml: String) -> Bool {
+        var section: String?  // nil at the top level
+        for raw in toml.components(separatedBy: "\n") {
+            let line = uncommented(raw).filter { !$0.isWhitespace }
+            if line.hasPrefix("[") {
+                section = line
+            } else if (section == "[features]" && line.hasPrefix("codex_hooks="))
+                        || (section == nil && line.hasPrefix("features.codex_hooks=")) {
                 return true
             }
         }

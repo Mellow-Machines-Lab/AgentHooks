@@ -1,6 +1,6 @@
 # How agent-hooks works
 
-Updated 2026-10-11. [README.md](README.md) is the short version. This is
+Updated 2026-10-13. [README.md](README.md) is the short version. This is
 the tour: how the hooks get installed, what happens each time one fires,
 and how that becomes a list of sessions. The code and its tests have
 every rule.
@@ -24,7 +24,7 @@ The sections follow that path, left to right.
 | --- | --- |
 | `~/.claude/settings.json` | An entry for each of Claude Code's 14 hooks |
 | `~/.codex/hooks.json` | An entry for each of Codex's 9 hooks |
-| `~/.codex/config.toml` | `codex_hooks = true`, which Codex needs to run hooks at all |
+| `~/.codex/config.toml` | `hooks = true` under `[features]`, which Codex needs to run hooks at all. It was once `codex_hooks`, which Codex still reads but warns about at every start, so installing renames an old one, and `status` calls an install with it out of date |
 
 Every entry runs the `agent-hook` sitting next to `agent-hooks`. So copy
 both somewhere stable first, as the README does: if they stay in the
@@ -60,7 +60,7 @@ entries every time it launches. Repair never installs for an agent that
 had none, and never turns hooks back on that you turned off.
 
 `agent-hooks remove` takes out exactly its own entries, and leaves two
-things behind. `codex_hooks = true` stays in `config.toml`, since other
+things behind. `hooks = true` stays in `config.toml`, since other
 hooks may rely on it. And a JSON file that held only its entries is
 left as an empty `{}` rather than deleted. After any of these, restart
 open agent sessions: they read their hooks at startup.
@@ -239,7 +239,7 @@ happened.
 | Command | What it does |
 | --- | --- |
 | `agent-hooks install [claude\|codex] [--keep-text] [--hook PATH]` | Adds the hooks for the agent named, or every one found |
-| `agent-hooks remove [claude\|codex]` | Takes its entries out, leaving `codex_hooks = true` on |
+| `agent-hooks remove [claude\|codex]` | Takes its entries out, leaving `hooks = true` on |
 | `agent-hooks status [--hook PATH]` | Each agent's health, and the apps listening |
 | `agent-hooks tail [--sessions] [--name NAME]` | Prints every event, and with `--sessions` each session's state as it changes |
 | `agent-hooks doctor [--hook PATH]` | `status`, then a made-up hook through the client, to check it works |
