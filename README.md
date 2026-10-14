@@ -57,7 +57,7 @@ Only the hook client stands apart: it's kept tiny so it starts fast.
 - **Installing is safe to repeat.** It edits three files:
   `~/.claude/settings.json` and `~/.codex/hooks.json`, where it touches
   only its own entries, and `~/.codex/config.toml`, where it turns on
-  `codex_hooks = true` under `[features]`. `status` says if they're out
+  `hooks = true` under `[features]`. `status` says if they're out
   of date, and an app can repair them every time it launches.
 - **There's no background service.** Each app listens on a socket of its
   own in `~/.agent-hooks/sockets/`, and the client sends to all of them.

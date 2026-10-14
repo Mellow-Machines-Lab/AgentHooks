@@ -113,7 +113,7 @@ import Testing
         var root = read(.claude)
         var hooks = root["hooks"] as! [String: Any]
         hooks["Notification"] = [["matcher": "permission_prompt|elicitation_dialog",
-                                  "hooks": [["type": "command", "command": installer.command(.claude), "timeout": 5]]]]
+                                  "hooks": [["type": "command", "command": installer.command(.claude), "timeout": 3]]]]
         root["hooks"] = hooks
         write(.claude, root)
         #expect(installer.health(.claude) == .outdated)
@@ -128,7 +128,7 @@ import Testing
     /// changes nothing else.
     @Test func testAnInstallWithoutSubagentStopIsRepaired() throws {
         #expect(HookInstaller.events[.claude]!.count == 14)
-        let entry: [String: Any] = ["type": "command", "command": installer.command(.claude), "timeout": 5]
+        let entry: [String: Any] = ["type": "command", "command": installer.command(.claude), "timeout": 3]
         var hooks: [String: Any] = [:]
         for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
                       "PermissionRequest", "Elicitation", "ElicitationResult", "Stop", "StopFailure", "SubagentStart",
@@ -191,7 +191,7 @@ import Testing
         #expect(installer.repair() == [])
         #expect((try Data(contentsOf: url)) == before)
 
-        let entry: [String: Any] = ["type": "command", "command": installer.command(.claude), "timeout": 5]
+        let entry: [String: Any] = ["type": "command", "command": installer.command(.claude), "timeout": 3]
         var twice = hooks
         twice["PostToolUse"] = twice["PostToolUse"] as! [[String: Any]] + [["hooks": [entry]]]
         write(.claude, ["hooks": twice])
@@ -245,7 +245,7 @@ import Testing
             #expect((commands(.codex, event)) == (["\"\(hook)\" codex"]), "\(event)")
         }
         let toml = try String(contentsOf: home.appendingPathComponent(".codex/config.toml"), encoding: .utf8)
-        #expect(toml == ("model = \"gpt-5\"\n\n[features]\ncodex_hooks = true\nweb_search = true\n"))
+        #expect(toml == ("model = \"gpt-5\"\n\n[features]\nhooks = true\nweb_search = true\n"))
         try installer.install(.codex)
         #expect((try String(contentsOf: home.appendingPathComponent(".codex/config.toml"), encoding: .utf8)) == toml)
     }
@@ -256,35 +256,53 @@ import Testing
         let toml = home.appendingPathComponent(".codex/config.toml")
         let preview = installer.preview(.codex)
         #expect(preview.hasPrefix("SessionStart (startup|resume|clear) → \"\(hook)\" codex\n"), "\(preview)")
-        #expect(preview.hasSuffix("SessionEnd → \"\(hook)\" codex\n\nIn \(toml.path), under [features]:\ncodex_hooks = true"), "\(preview)")
-        #expect(!installer.preview(.claude).contains("codex_hooks"))
+        #expect(preview.hasSuffix("SessionEnd → \"\(hook)\" codex\n\nIn \(toml.path), under [features]:\nhooks = true"), "\(preview)")
+        #expect(!installer.preview(.claude).contains("hooks = true"))
         try installer.install(.codex)
-        #expect(try String(contentsOf: toml, encoding: .utf8).contains("codex_hooks = true"))
-        #expect(!installer.preview(.codex).contains("codex_hooks"), "already on, so nothing to add")
+        #expect(try String(contentsOf: toml, encoding: .utf8).contains("hooks = true"))
+        #expect(!installer.preview(.codex).contains("hooks = true"), "already on, so nothing to add")
+    }
+
+    /// An install whose config.toml still has the key's old name is
+    /// outdated, so an app's repair moves it, and Codex stops warning.
+    @Test func testTheOldCodexKeyIsRepaired() throws {
+        let toml = home.appendingPathComponent(".codex/config.toml")
+        try installer.install(.codex)
+        #expect(installer.health(.codex) == .installed)
+        try "[features]\ncodex_hooks = true\n".write(to: toml, atomically: true, encoding: .utf8)
+        #expect(installer.health(.codex) == .outdated)
+        #expect(installer.repair() == [.codex])
+        #expect((try String(contentsOf: toml, encoding: .utf8)) == "[features]\nhooks = true\n")
+        #expect(installer.health(.codex) == .installed)
     }
 
     @Test func testFeatureFlagEdits() throws {
         func enabling(_ toml: String) throws -> String? { try HookInstaller.enablingCodexHooks(in: toml) }
-        #expect((try enabling("")) == ("[features]\ncodex_hooks = true\n"))
-        #expect((try enabling("a = 1")) == ("a = 1\n\n[features]\ncodex_hooks = true\n"))
-        #expect((try enabling("[features]\ncodex_hooks = true\n")) == nil)
+        #expect((try enabling("")) == ("[features]\nhooks = true\n"))
+        #expect((try enabling("a = 1")) == ("a = 1\n\n[features]\nhooks = true\n"))
+        #expect((try enabling("[features]\nhooks = true\n")) == nil)
+        // The key's old name, which Codex warns about at every start, moves
+        // to the new one, never leaving the key twice.
+        #expect((try enabling("[features]\ncodex_hooks = true\nweb_search = true\n")) == ("[features]\nhooks = true\nweb_search = true\n"))
+        #expect((try enabling("features.codex_hooks = true\n")) == ("features.hooks = true\n"))
+        #expect((try enabling("[features]\ncodex_hooks = true\nhooks = true\n")) == ("[features]\nhooks = true\n"))
         // Hooks the person turned off stay off.
         #expect(throws: (any Error).self) { try enabling("[features]\ncodex_hooks = false\n") }
         #expect(throws: (any Error).self) { try enabling("[features]\nhooks = false\n") }
         // A key of the same name in another table isn't ours.
-        #expect((try enabling("[other]\ncodex_hooks = true\n")) == ("[other]\ncodex_hooks = true\n\n[features]\ncodex_hooks = true\n"))
+        #expect((try enabling("[other]\nhooks = true\n")) == ("[other]\nhooks = true\n\n[features]\nhooks = true\n"))
     }
 
     /// However `features` is written, enabling hooks never
     /// declares it a second time, which Codex refuses to load.
     @Test func testFeatureFlagEditsNeverDeclareFeaturesTwice() throws {
         func enabling(_ toml: String) throws -> String? { try HookInstaller.enablingCodexHooks(in: toml) }
-        #expect((try enabling("[features] # experimental\nweb_search = true\n")) == ("[features] # experimental\ncodex_hooks = true\nweb_search = true\n"))
-        #expect((try enabling("[features] # experimental\ncodex_hooks = true # for my tools\n")) == nil, "already on")
-        #expect((try enabling("[ features ]\n")) == ("[ features ]\ncodex_hooks = true\n"))
-        #expect((try enabling("model = \"o3\"\nfeatures.web_search = true\n\n[tui]\nx = 1\n")) == ("model = \"o3\"\nfeatures.web_search = true\nfeatures.codex_hooks = true\n\n[tui]\nx = 1\n"))
-        #expect((try enabling("features.codex_hooks = true\n")) == nil)
-        #expect((try enabling("[tui]\nnote = \"see #features\"\n")) == ("[tui]\nnote = \"see #features\"\n\n[features]\ncodex_hooks = true\n"))
+        #expect((try enabling("[features] # experimental\nweb_search = true\n")) == ("[features] # experimental\nhooks = true\nweb_search = true\n"))
+        #expect((try enabling("[features] # experimental\nhooks = true # for my tools\n")) == nil, "already on")
+        #expect((try enabling("[ features ]\n")) == ("[ features ]\nhooks = true\n"))
+        #expect((try enabling("model = \"o3\"\nfeatures.web_search = true\n\n[tui]\nx = 1\n")) == ("model = \"o3\"\nfeatures.web_search = true\nfeatures.hooks = true\n\n[tui]\nx = 1\n"))
+        #expect((try enabling("features.hooks = true\n")) == nil)
+        #expect((try enabling("[tui]\nnote = \"see #features\"\n")) == ("[tui]\nnote = \"see #features\"\n\n[features]\nhooks = true\n"))
         #expect(throws: (any Error).self) { try enabling("features = { web_search = true }\n") }
         #expect((try enabling("features = { web_search = true, codex_hooks = true }\n")) == nil, "already on")
         #expect((try enabling("features = {codex_hooks=true}\n")) == nil, "already on")
@@ -295,7 +313,7 @@ import Testing
         let inline = "features = { web_search = true }\n"
         try inline.write(to: url, atomically: true, encoding: .utf8)
         #expect(installer.preview(.codex).hasSuffix(
-            "Nothing is added until you put this in \(url.path), inside features = { … }:\ncodex_hooks = true"))
+            "Nothing is added until you put this in \(url.path), inside features = { … }:\nhooks = true"))
         #expect(throws: (any Error).self) { try installer.install(.codex) }
         #expect((try String(contentsOf: url, encoding: .utf8)) == inline)
         #expect(!(FileManager.default.fileExists(atPath: installer.configURL(.codex).path)), "no hooks.json either")
@@ -408,7 +426,7 @@ import Testing
             guard case .failure(let why) = installer.codexConfig else { Issue.record("expected a refusal"); return }
             let preview = installer.preview(.codex)
             #expect(preview.hasSuffix("SessionEnd → \"\(hook)\" codex\n\nNothing is added: \(why)"), "\(preview)")
-            #expect(!preview.contains("codex_hooks"), "\(preview)")
+            #expect(!preview.contains("hooks = true"), "\(preview)")
             #expect(throws: (any Error).self) { try installer.install(.codex) }
             #expect(!(FileManager.default.fileExists(atPath: installer.configURL(.codex).path)), "no hooks.json either")
         }

@@ -12,7 +12,7 @@ let usage = """
         $HOME).
     agent-hooks remove [claude|codex] [--home DIR]
         Takes agent-hook's entries out of ~/.claude/settings.json and ~/.codex/hooks.json. Leaves
-        codex_hooks = true in ~/.codex/config.toml, since other hooks may need it.
+        hooks = true in ~/.codex/config.toml, since other hooks may need it.
     agent-hooks status [--hook PATH] [--home DIR]
         Each agent's hooks, and the apps listening.
     agent-hooks tail [--sessions] [--name NAME]
