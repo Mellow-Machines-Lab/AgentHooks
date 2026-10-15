@@ -63,8 +63,8 @@ public final class SessionTracker {
         /// Codex: when "needs you" arrived, during the grace period.
         public internal(set) var pendingSince: Int64?
         /// Who is asking, while "needs you" waits: `""` for the main agent,
-        /// a Claude subagent's id, or `SessionTracker.anyone` for a
-        /// `Notification` whose request's own hook hasn't come; each with
+        /// a Claude subagent's id, or `"*"` for a `Notification` whose
+        /// request's own hook hasn't come; each with
         /// the tool it asks for, or `""` for none.
         public internal(set) var askers: [String: String] = [:]
         /// What the request asks for, as its first asker said.
@@ -120,6 +120,9 @@ public final class SessionTracker {
         /// back while its turn goes on.
         case subagentEnded(returned: Bool)
         case sessionEnded
+        /// A request nobody answered stopped showing: its session was
+        /// silent for 10 minutes (the safety net). Only `advance` says it.
+        case requestExpired
         /// Anything else that counted: a question answered, or a
         /// subagent's own turn-level hook.
         case other
@@ -127,10 +130,10 @@ public final class SessionTracker {
 
     /// The asker of a request that came as a `Notification` alone, which
     /// doesn't say who asked: any event from the session answers it.
-    public static let anyone = "*"
+    static let anyone = "*"
     /// How far apart a request's own hook and its `Notification` may land,
     /// either way round.
-    public static let noticeLagMs: Int64 = 5000
+    static let noticeLagMs: Int64 = 5000
     /// Codex's grace period before "needs you" shows.
     public static let codexGraceMs: Int64 = 2000
     /// In its first second, a request from "anyone" isn't answered by a
@@ -141,9 +144,6 @@ public final class SessionTracker {
     public static let maxRequest = Int(Int32.max)
 
     public private(set) var sessions: [String: Session] = [:]
-    /// Why each request that cleared unanswered did (`nothing for 10
-    /// minutes`, `forgotten`), by session key, until the app takes it.
-    public var clearedWhy: [String: String] = [:]
     var fold = SessionFold()
     public private(set) var lastRequest: Int
     var callOrder = 0
@@ -163,6 +163,8 @@ public final class SessionTracker {
     /// what it did, or nil when it didn't count (a hook that landed after
     /// its session ended, a stale idle notice). `ref` is the caller's own
     /// for it, such as a log's sequence number: a request keeps it.
+    /// To hear what those timers did, call `advance(to: event.at,
+    /// sparing: event.key)` first: then nothing is due any more.
     @discardableResult
     public func handle(_ event: AgentEvent, ref: Int? = nil) -> Change? {
         let now = event.at
@@ -181,8 +183,11 @@ public final class SessionTracker {
     /// Runs every timer due by `now`: a Codex request past its grace shows,
     /// a session silent 10 minutes stops waiting and working, and one
     /// silent a day is forgotten. `sparing`'s Codex request isn't shown:
-    /// its event comes first.
-    public func advance(to now: Int64, sparing: String? = nil) {
+    /// its event comes first. Returns what the timers did that the table
+    /// can't show, by session key: each request that expired.
+    @discardableResult
+    public func advance(to now: Int64, sparing: String? = nil) -> [String: Change] {
+        var changes: [String: Change] = [:]
         for (key, var s) in sessions where s.pendingSince != nil || now - s.lastEventAt >= SessionFold.safetyNetMs {
             let silent = now - s.lastEventAt >= SessionFold.safetyNetMs
             if !silent && key != sparing { promote(&s, now) }
@@ -192,17 +197,18 @@ public final class SessionTracker {
                 // waiting on its prompt, or gone. Either way it isn't
                 // working. Its turn, if it goes on, still counts from its
                 // start.
-                clearRequest(&s, now, why: "nothing for 10 minutes")
+                if s.needsSince != nil { changes[key] = .requestExpired }
+                clearRequest(&s, now)
                 s.working = false
             }
             if SessionFold.forgotten(s.lastEventAt, at: now) {
-                if s.needsSince != nil { clearedWhy[key] = "forgotten" }
                 sessions[key] = nil
             } else {
                 sessions[key] = s
             }
         }
         fold.forgetEnds(at: now)
+        return changes
     }
 
     // MARK: - Reading
@@ -443,10 +449,8 @@ public final class SessionTracker {
         if s.needsSince != nil { s.request = takeRequest() }
     }
 
-    /// Nobody is waiting on the session any more; `why` it cleared if
-    /// nobody answered.
-    func clearRequest(_ s: inout Session, _ now: Int64, why: String? = nil) {
-        if s.needsSince != nil, let why { clearedWhy[s.key] = why }
+    /// Nobody is waiting on the session any more.
+    func clearRequest(_ s: inout Session, _ now: Int64) {
         s.needsSince = nil
         s.pendingSince = nil
         s.askers.removeAll()

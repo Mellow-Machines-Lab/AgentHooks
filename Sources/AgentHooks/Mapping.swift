@@ -30,14 +30,14 @@ public enum Mapping {
     ]
 
     /// Claude's `Notification` types that mean a person is being asked.
-    public static let askingNotifications = ["permission_prompt", "elicitation_dialog"]
+    static let askingNotifications = ["permission_prompt", "elicitation_dialog"]
     /// Claude's `Notification` type for sitting at its prompt for a minute:
     /// whatever turn there was is over, even one that ended without `Stop`.
-    public static let idleNotification = "idle_prompt"
+    static let idleNotification = "idle_prompt"
     /// Every `Notification` type mapped, in the order the installer's
     /// matcher lists them: Claude runs the hook for no other.
     /// A new order would make every install look outdated.
-    public static let notificationTypes = askingNotifications + [idleNotification]
+    static let notificationTypes = askingNotifications + [idleNotification]
 
     /// Codex's hooks, in the order the installer adds them. Codex has no
     /// failure hook; `Interrupt` is you pressing Esc. `PostCompact` is its
@@ -130,7 +130,9 @@ public enum Mapping {
         case (.turn, .end):
             if line.hook == "StopFailure" {
                 e.outcome = .failed
-                e.error = line.error.map(errorClass)
+                // The client sends only the class; classing it again is a
+                // no-op, and still classes a line from an older client.
+                e.error = line.error.map(TurnError.classify)
             } else if line.hook == "Stop" {
                 e.outcome = .done
                 e.message = line.message
@@ -148,21 +150,5 @@ public enum Mapping {
         e.app = line.app
         e.appSession = line.appSession
         return e
-    }
-
-    /// Claude's `StopFailure` errors that don't name their class.
-    static let claudeErrors = [
-        "server_error": "api_error", "invalid_request": "api_error", "model_not_found": "api_error",
-        "max_output_tokens": "context_limit",
-        "account_on_hold": "auth", "verification_required": "auth", "cloud_credential_error": "auth",
-    ]
-
-    /// A failed turn's error as a short, fixed class; anything
-    /// unfamiliar becomes `other`.
-    public static func errorClass(_ raw: String) -> String {
-        let lowered = raw.lowercased()
-        if let known = claudeErrors[lowered] { return known }
-        let classes = ["rate_limit", "overloaded", "api_error", "auth", "timeout", "network", "context_limit", "billing"]
-        return classes.first { lowered.contains($0) } ?? "other"
     }
 }

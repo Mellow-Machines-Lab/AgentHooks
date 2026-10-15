@@ -115,7 +115,13 @@ import Testing
         #expect(e.at == 99)
         #expect(e.key == "claude/s1")
         #expect(e.jsonLine == #"{"agent":"claude","at":99,"cwd":"/w/landing","hook":"PreToolUse","kind":"tool","name":"Fix the nav","phase":"start","session":"s1","tool":"Bash","tool_use_id":"toolu_1","topic":"build"}"#)
-        #expect(Mapping.errorClass("Request timeout") == "timeout")
-        #expect(Mapping.errorClass("weird") == "other")
+    }
+
+    /// A line from an older client carries the error's text: it still
+    /// becomes only its class.
+    @Test func aTurnErrorsTextFromAnOlderClientBecomesItsClass() throws {
+        let old = try #require(Mapping.event(from: line("claude", "StopFailure") { $0.error = "Request timeout" }))
+        #expect(old.error == "timeout")
+        #expect(Mapping.event(from: line("claude", "StopFailure") { $0.error = "weird" })?.error == "other")
     }
 }

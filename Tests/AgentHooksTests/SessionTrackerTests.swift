@@ -108,11 +108,37 @@ import Testing
     @Test func theSafetyNetClearsASilentRequest() {
         send(.turn, .start, "UserPromptSubmit")
         send(.tool, .wait, "PermissionRequest") { $0.tool = "Bash" }
-        now += SessionFold.safetyNetMs
-        tracker.advance(to: now)
+        now += SessionFold.safetyNetMs - 1
+        #expect(tracker.advance(to: now).isEmpty, "not yet")
+        now += 1
+        #expect(tracker.advance(to: now) == ["claude/s1": .requestExpired], "the app hears why it cleared")
         #expect(state() == "idle")
-        #expect(tracker.clearedWhy["claude/s1"] == "nothing for 10 minutes")
+        #expect(tracker.advance(to: now).isEmpty, "once")
         #expect(SessionFold.safetyNetMs == 600_000)
+    }
+
+    /// An event after the silence finds its session's request already
+    /// expired, when the app advanced to its time first.
+    @Test func advancingBeforeAnEventHearsTheTimersItWouldRun() {
+        send(.turn, .start, "UserPromptSubmit")
+        send(.tool, .wait, "PermissionRequest") { $0.tool = "Bash" }
+        now += SessionFold.safetyNetMs
+        var e = AgentEvent(agent: .claude, kind: .tool, phase: .start, hook: "PreToolUse", session: "s1", at: now,
+                           cwd: "/w/landing")
+        e.tool = "Bash"
+        #expect(tracker.advance(to: e.at, sparing: e.key) == ["claude/s1": .requestExpired])
+        #expect(tracker.handle(e) != nil)
+        #expect(state() == "working")
+    }
+
+    /// A Codex request expires only once it has shown: one still in its
+    /// grace was never seen.
+    @Test func aCodexRequestInItsGraceDoesntExpire() {
+        send(.turn, .start, "UserPromptSubmit", agent: .codex)
+        send(.tool, .wait, "PermissionRequest", agent: .codex) { $0.tool = "Bash" }
+        now += SessionFold.safetyNetMs
+        #expect(tracker.advance(to: now).isEmpty)
+        #expect(state("codex/s1") == "idle")
     }
 
     @Test func aHookAfterItsSessionEndedIsLetGo() {
