@@ -106,6 +106,14 @@ public struct AgentEvent: Equatable, Codable, Sendable {
         self.message = message
     }
 
+    /// Its JSON keys, snake_case both ways, so an event an app wrote reads
+    /// back as it was.
+    enum CodingKeys: String, CodingKey {
+        case agent, kind, phase, hook, session, at, subagent, cwd, name, app, mode, source, prompt, tool, topic, failed,
+             error, asking, notice, outcome, message
+        case subagentType = "subagent_type", appSession = "app_session", toolUseID = "tool_use_id"
+    }
+
     /// The session's key across agents: `claude/s1`.
     public var key: String { SessionFold.key(agent, session) }
 
@@ -113,7 +121,6 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     public var jsonLine: String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         return String(decoding: (try? encoder.encode(self)) ?? Data(), as: UTF8.self)
     }
 }

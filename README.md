@@ -96,7 +96,7 @@ Each event says two things:
 | The session closed | `SessionEnd` | `SessionEnd` | `session` `end` |
 
 The library's `SessionTracker` follows the events and keeps each session
-**working**, **idle** or **needs you**. [ARCHITECTURE.md](ARCHITECTURE.md)
+**working**, **idle** or **needs you**, with its turn. [ARCHITECTURE.md](ARCHITECTURE.md)
 lists every field an event carries.
 
 ## One event, start to finish

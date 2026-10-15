@@ -175,6 +175,44 @@ import Testing
         #expect(send(.subagent, .end, "SubagentStop") { $0.subagent = "a1" } == .subagentEnded(returned: true))
     }
 
+    /// A turn's number counts your prompts since the tracker first saw the
+    /// session. A turn a call opens with no prompt keeps the number before
+    /// it, and a session that ends starts again from 1.
+    @Test func aTurnsNumberCountsThePrompts() {
+        func number() -> Int? { tracker.sessions["claude/s1"]?.turn.number }
+        send(.session, .start, "SessionStart")
+        #expect(number() == 0)
+        send(.turn, .start, "UserPromptSubmit")
+        #expect(number() == 1)
+        send(.turn, .end, "Stop") { $0.outcome = .done }
+        send(.tool, .start, "PreToolUse") { $0.tool = "Bash" }
+        #expect(tracker.sessions["claude/s1"]?.turn.startedAt != nil, "a call opened a turn")
+        #expect(number() == 1, "with no prompt")
+        send(.turn, .start, "UserPromptSubmit")
+        #expect(number() == 2)
+        send(.session, .end, "SessionEnd")
+        send(.turn, .start, "UserPromptSubmit")
+        #expect(number() == 1)
+    }
+
+    /// A result that comes without its topic (its hook line was cut short)
+    /// can read its call's start before the tracker handles it: by its
+    /// `tool_use_id`, else the last call's.
+    @Test func aResultFindsItsCallsStart() {
+        send(.turn, .start, "UserPromptSubmit")
+        send(.tool, .start, "PreToolUse") { $0.tool = "Bash"; $0.toolUseID = "t1"; $0.topic = "tests" }
+        let started = now
+        send(.tool, .start, "PreToolUse") { $0.tool = "Read"; $0.toolUseID = "t2" }
+        var result = AgentEvent(agent: .claude, kind: .tool, phase: .end, hook: "PostToolUse", session: "s1", at: now + 100)
+        result.tool = "Bash"
+        result.toolUseID = "t1"
+        let start = tracker.sessions["claude/s1"]?.turn.callStart(for: result)
+        #expect(start?.at == started)
+        #expect(start?.topic == "tests")
+        result.toolUseID = nil
+        #expect(tracker.sessions["claude/s1"]?.turn.callStart(for: result)?.topic == nil, "the last call's: t2")
+    }
+
     @Test func requestNumbersWrapPastTheirLimit() {
         #expect(SessionTracker.nextRequest(after: SessionTracker.maxRequest) == 1)
         #expect(SessionTracker.nextRequest(after: 7) == 8)

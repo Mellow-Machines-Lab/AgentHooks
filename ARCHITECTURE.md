@@ -162,7 +162,9 @@ it's about) and a **phase** (where that thing is):
 ### Its fields
 
 An event carries only the facts its hook has. These are the names
-`agent-hooks tail` prints:
+`agent-hooks tail` prints, and the keys of `AgentEvent`'s `Codable`
+form, so an app that keeps events as JSON reads them back with a plain
+`JSONDecoder`:
 
 | Field | Example | What it says |
 | --- | --- | --- |
@@ -201,7 +203,13 @@ agent's tool names: `shell`, `edit`, `read`, `search`, `web`,
 `SessionTracker` follows the events and keeps one entry per session.
 Each is **working**, **idle** or **needs you**, with its project and
 workspace (from the folder's git repository, branch or worktree), its
-running tool calls and its subagents.
+running tool calls and its subagents, and its `turn`: when the turn
+open started, and its number, counting your prompts since the tracker
+first saw the session. An app that keeps more about each turn (what its
+calls did, say) reads these and the tracker's `Change` for each event,
+rather than keeping sessions of its own: then the two can't disagree.
+`turn.callStart(for:)` finds a result's call before the tracker handles
+it, for a result whose hook line lost its topic.
 
 Here's Claude asking to run the tests in a worktree, as
 `agent-hooks tail --sessions` printed it, one line each. The tool call
