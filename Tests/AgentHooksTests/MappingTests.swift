@@ -115,7 +115,25 @@ import Testing
         #expect(e.at == 99)
         #expect(e.key == "claude/s1")
         #expect(e.jsonLine == #"{"agent":"claude","at":99,"cwd":"/w/landing","hook":"PreToolUse","kind":"tool","name":"Fix the nav","phase":"start","session":"s1","tool":"Bash","tool_use_id":"toolu_1","topic":"build"}"#)
-        #expect(Mapping.errorClass("Request timeout") == "timeout")
-        #expect(Mapping.errorClass("weird") == "other")
+    }
+
+    /// An event's JSON reads back as the event, its snake_case keys
+    /// included, with no key strategy: `tool_use_id` is `toolUseID`.
+    @Test func theEventReadsBackFromItsJSON() throws {
+        var e = AgentEvent(agent: .claude, kind: .tool, phase: .wait, hook: "PermissionRequest", session: "s1", at: 7,
+                           subagent: "a1", subagentType: "Explore", appSession: "local_1", tool: "Bash", toolUseID: "toolu_1",
+                           failed: false, asking: .permission)
+        #expect(try JSONDecoder().decode(AgentEvent.self, from: Data(e.jsonLine.utf8)) == e)
+        e.outcome = .stopped
+        #expect(e.jsonLine.contains(#""app_session":"local_1""#) && e.jsonLine.contains(#""subagent_type":"Explore""#))
+        #expect(try JSONDecoder().decode(AgentEvent.self, from: JSONEncoder().encode(e)) == e)
+    }
+
+    /// A line from an older client carries the error's text: it still
+    /// becomes only its class.
+    @Test func aTurnErrorsTextFromAnOlderClientBecomesItsClass() throws {
+        let old = try #require(Mapping.event(from: line("claude", "StopFailure") { $0.error = "Request timeout" }))
+        #expect(old.error == "timeout")
+        #expect(Mapping.event(from: line("claude", "StopFailure") { $0.error = "weird" })?.error == "other")
     }
 }

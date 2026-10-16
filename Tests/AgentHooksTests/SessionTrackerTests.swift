@@ -108,11 +108,37 @@ import Testing
     @Test func theSafetyNetClearsASilentRequest() {
         send(.turn, .start, "UserPromptSubmit")
         send(.tool, .wait, "PermissionRequest") { $0.tool = "Bash" }
-        now += SessionFold.safetyNetMs
-        tracker.advance(to: now)
+        now += SessionFold.safetyNetMs - 1
+        #expect(tracker.advance(to: now).isEmpty, "not yet")
+        now += 1
+        #expect(tracker.advance(to: now) == ["claude/s1": .requestExpired], "the app hears why it cleared")
         #expect(state() == "idle")
-        #expect(tracker.clearedWhy["claude/s1"] == "nothing for 10 minutes")
+        #expect(tracker.advance(to: now).isEmpty, "once")
         #expect(SessionFold.safetyNetMs == 600_000)
+    }
+
+    /// An event after the silence finds its session's request already
+    /// expired, when the app advanced to its time first.
+    @Test func advancingBeforeAnEventHearsTheTimersItWouldRun() {
+        send(.turn, .start, "UserPromptSubmit")
+        send(.tool, .wait, "PermissionRequest") { $0.tool = "Bash" }
+        now += SessionFold.safetyNetMs
+        var e = AgentEvent(agent: .claude, kind: .tool, phase: .start, hook: "PreToolUse", session: "s1", at: now,
+                           cwd: "/w/landing")
+        e.tool = "Bash"
+        #expect(tracker.advance(to: e.at, sparing: e.key) == ["claude/s1": .requestExpired])
+        #expect(tracker.handle(e) != nil)
+        #expect(state() == "working")
+    }
+
+    /// A Codex request expires only once it has shown: one still in its
+    /// grace was never seen.
+    @Test func aCodexRequestInItsGraceDoesntExpire() {
+        send(.turn, .start, "UserPromptSubmit", agent: .codex)
+        send(.tool, .wait, "PermissionRequest", agent: .codex) { $0.tool = "Bash" }
+        now += SessionFold.safetyNetMs
+        #expect(tracker.advance(to: now).isEmpty)
+        #expect(state("codex/s1") == "idle")
     }
 
     @Test func aHookAfterItsSessionEndedIsLetGo() {
@@ -147,6 +173,44 @@ import Testing
         #expect(send(.subagent, .start, "SubagentStart") { $0.subagent = "a1" } == .subagentStarted)
         #expect(tracker.sessions["claude/s1"]?.helpers == ["a1"])
         #expect(send(.subagent, .end, "SubagentStop") { $0.subagent = "a1" } == .subagentEnded(returned: true))
+    }
+
+    /// A turn's number counts your prompts since the tracker first saw the
+    /// session. A turn a call opens with no prompt keeps the number before
+    /// it, and a session that ends starts again from 1.
+    @Test func aTurnsNumberCountsThePrompts() {
+        func number() -> Int? { tracker.sessions["claude/s1"]?.turn.number }
+        send(.session, .start, "SessionStart")
+        #expect(number() == 0)
+        send(.turn, .start, "UserPromptSubmit")
+        #expect(number() == 1)
+        send(.turn, .end, "Stop") { $0.outcome = .done }
+        send(.tool, .start, "PreToolUse") { $0.tool = "Bash" }
+        #expect(tracker.sessions["claude/s1"]?.turn.startedAt != nil, "a call opened a turn")
+        #expect(number() == 1, "with no prompt")
+        send(.turn, .start, "UserPromptSubmit")
+        #expect(number() == 2)
+        send(.session, .end, "SessionEnd")
+        send(.turn, .start, "UserPromptSubmit")
+        #expect(number() == 1)
+    }
+
+    /// A result that comes without its topic (its hook line was cut short)
+    /// can read its call's start before the tracker handles it: by its
+    /// `tool_use_id`, else the last call's.
+    @Test func aResultFindsItsCallsStart() {
+        send(.turn, .start, "UserPromptSubmit")
+        send(.tool, .start, "PreToolUse") { $0.tool = "Bash"; $0.toolUseID = "t1"; $0.topic = "tests" }
+        let started = now
+        send(.tool, .start, "PreToolUse") { $0.tool = "Read"; $0.toolUseID = "t2" }
+        var result = AgentEvent(agent: .claude, kind: .tool, phase: .end, hook: "PostToolUse", session: "s1", at: now + 100)
+        result.tool = "Bash"
+        result.toolUseID = "t1"
+        let start = tracker.sessions["claude/s1"]?.turn.callStart(for: result)
+        #expect(start?.at == started)
+        #expect(start?.topic == "tests")
+        result.toolUseID = nil
+        #expect(tracker.sessions["claude/s1"]?.turn.callStart(for: result)?.topic == nil, "the last call's: t2")
     }
 
     @Test func requestNumbersWrapPastTheirLimit() {

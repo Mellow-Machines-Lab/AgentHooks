@@ -15,7 +15,8 @@ public struct HookLine: Equatable, Sendable {
     public var cwd: String?
     public var tool: String?
     public var topic: String?
-    /// `StopFailure`'s error class, e.g. `rate_limit`.
+    /// `StopFailure`'s error as a short class (`TurnError`), e.g.
+    /// `rate_limit`; the error's text never leaves `agent-hook`.
     public var error: String?
     /// `Notification`'s type, e.g. `permission_prompt`.
     public var kind: String?
@@ -139,7 +140,7 @@ public struct HookLine: Equatable, Sendable {
         case "Stop":
             if keepText { line.message = string(json["last_assistant_message"], max: maxMessage) }
         case "StopFailure":
-            line.error = string(json["error"]) ?? string(json["error_type"])
+            line.error = (string(json["error"]) ?? string(json["error_type"])).map(TurnError.classify)
         case "Notification":
             line.kind = string(json["notification_type"])
         default:

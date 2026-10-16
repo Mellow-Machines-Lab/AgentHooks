@@ -1,6 +1,6 @@
 # How agent-hooks works
 
-Updated 2026-10-13. [README.md](README.md) is the short version. This is
+Updated 2026-10-15. [README.md](README.md) is the short version. This is
 the tour: how the hooks get installed, what happens each time one fires,
 and how that becomes a list of sessions. The code and its tests have
 every rule.
@@ -162,7 +162,9 @@ it's about) and a **phase** (where that thing is):
 ### Its fields
 
 An event carries only the facts its hook has. These are the names
-`agent-hooks tail` prints:
+`agent-hooks tail` prints, and the keys of `AgentEvent`'s `Codable`
+form, so an app that keeps events as JSON reads them back with a plain
+`JSONDecoder`:
 
 | Field | Example | What it says |
 | --- | --- | --- |
@@ -187,7 +189,7 @@ An event carries only the facts its hook has. These are the names
 | `asking` | `permission` | On a `tool` wait: `permission`, or `input` for a question |
 | `notice` | `permission_prompt` | When the event came from Claude's `Notification`, its type |
 | `failed` | `false` | On a Claude `tool` end: whether the call failed |
-| `error` | `rate_limit` | On a failure: the error, as a short class, never its text |
+| `error` | `rate_limit` | On a failure: the error as a short class, which the client works out, never its text: a turn's from `TurnError`, a call's from `ToolError` |
 | `outcome` | `done` | On a `turn` end: `done`, `failed`, or `stopped` |
 | `message` | `Fixed it.` | On a `turn` end: the agent's last message, only with `--keep-text` |
 
@@ -201,7 +203,13 @@ agent's tool names: `shell`, `edit`, `read`, `search`, `web`,
 `SessionTracker` follows the events and keeps one entry per session.
 Each is **working**, **idle** or **needs you**, with its project and
 workspace (from the folder's git repository, branch or worktree), its
-running tool calls and its subagents.
+running tool calls and its subagents, and its `turn`: when the turn
+open started, and its number, counting your prompts since the tracker
+first saw the session. An app that keeps more about each turn (what its
+calls did, say) reads these and the tracker's `Change` for each event,
+rather than keeping sessions of its own: then the two can't disagree.
+`turn.callStart(for:)` finds a result's call before the tracker handles
+it, for a result whose hook line lost its topic.
 
 Here's Claude asking to run the tests in a worktree, as
 `agent-hooks tail --sessions` printed it, one line each. The tool call
@@ -232,7 +240,9 @@ It has to be right every time, and the hooks don't make that easy:
   Esc, so the next event has to say.
 
 A session that's been silent for 10 minutes stops needing you, whatever
-happened.
+happened. The tracker says so (the request expired), so an app can tell
+that from an answer, and `agent-hooks tail --sessions` marks that line
+`"expired":true`.
 
 ## The command line
 
@@ -272,9 +282,14 @@ Three pieces do the work:
 - `HookServer` listens on a socket.
 - `Mapping.event(from:)` turns each line into an `AgentEvent`.
 - `SessionTracker` keeps the sessions. Touch it from one queue, and call
-  `advance(to:)` about once a second so its timers run.
+  `advance(to:)` about once a second so its timers run. It returns what
+  the timers did that the table can't show: each request that expired
+  (`requestExpired`). `handle` runs the timers due by its event's time
+  too, so to hear those, call `advance(to: event.at, sparing: event.key)`
+  first.
 
-This prints each time an agent starts waiting on you:
+This prints each time an agent starts waiting on you, and each time a
+request nobody answered expires:
 
 ```swift
 import AgentHooks
@@ -293,8 +308,9 @@ final class Watcher: @unchecked Sendable {
         let server = HookServer(path: socket) { [self] line in
             queue.async { [self] in
                 guard let event = Mapping.event(from: line, receivedAt: now()) else { return }
+                let expired = tracker.advance(to: event.at, sparing: event.key)
                 tracker.handle(event)
-                report()
+                report(expired)
             }
         }
         try server.start()
@@ -303,14 +319,14 @@ final class Watcher: @unchecked Sendable {
         let tick = DispatchSource.makeTimerSource(queue: queue)
         tick.schedule(deadline: .now() + 1, repeating: 1)
         tick.setEventHandler { [self] in
-            tracker.advance(to: now())
-            report()
+            report(tracker.advance(to: now()))
         }
         tick.resume()
         keep = [server, tick]
     }
 
-    func report() {
+    func report(_ expired: [String: SessionTracker.Change]) {
+        for key in expired.keys.sorted() { print("\(key) stopped waiting: nobody answered in 10 minutes") }
         let asking = tracker.grouped(at: now()).waiting
         for s in asking where !waiting.contains(s.key) {
             let what = s.asking == .input ? "has a question" : "wants permission"

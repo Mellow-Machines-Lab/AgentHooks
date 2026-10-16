@@ -3,9 +3,9 @@ import Foundation
 /// The bookkeeping about agent sessions: what an agent's
 /// event means, which sessions ended, so that a hook of theirs landing
 /// later is let go, and how long a silent session still counts.
-/// `SessionTracker` adds who asks and "needs you"; an app that folds its
-/// own view of the sessions from the same events (what each turn did, say)
-/// keeps a `SessionFold` and a `Turn` per session too, so the two agree.
+/// `SessionTracker` keeps one and adds who asks and "needs you". An app
+/// reads what an event means (`step`) and the timings here; the rest is
+/// the tracker's.
 public struct SessionFold: Sendable {
     /// What an agent's event means to the rules.
     public enum Step: Equatable, Sendable {
@@ -58,14 +58,14 @@ public struct SessionFold: Sendable {
     /// When each session that ended (`session_end`) did, until it starts
     /// again or a day passes: a hook of its that lands later landed late,
     /// and doesn't bring it back.
-    public internal(set) var ended: [String: Int64] = [:]
+    var ended: [String: Int64] = [:]
     /// The last session's place in the order they were first seen.
     var lastOrder = 0
 
-    public init() {}
+    init() {}
 
     /// The next session's place in the order.
-    public mutating func takeOrder() -> Int {
+    mutating func takeOrder() -> Int {
         lastOrder += 1
         return lastOrder
     }
@@ -75,7 +75,7 @@ public struct SessionFold: Sendable {
     /// or with a new prompt. Anything else of its came from before the end
     /// (a Notification as you quit at the prompt, a background subagent's
     /// result, the command Codex's Interrupt aborted).
-    public mutating func admits(_ e: AgentEvent, _ step: Step, key: String, known: Bool) -> Bool {
+    mutating func admits(_ e: AgentEvent, _ step: Step, key: String, known: Bool) -> Bool {
         guard !known, ended[key] != nil else { return true }
         guard e.subagent == nil, step == .sessionStart || step == .turnStart else { return false }
         ended[key] = nil
@@ -83,10 +83,10 @@ public struct SessionFold: Sendable {
     }
 
     /// The session `key` ended at `now`.
-    public mutating func end(_ key: String, at now: Int64) { ended[key] = now }
+    mutating func end(_ key: String, at now: Int64) { ended[key] = now }
 
     /// Lets go of sessions that ended a day or more before `now`.
-    public mutating func forgetEnds(at now: Int64) {
+    mutating func forgetEnds(at now: Int64) {
         ended = ended.filter { now - $0.value < Self.forgetMs }
     }
 
@@ -96,10 +96,10 @@ public struct SessionFold: Sendable {
 }
 
 /// A tool call's start, for its result: when, and its topic.
-public typealias ToolStart = (at: Int64, topic: String?)
+typealias ToolStart = (at: Int64, topic: String?)
 
-/// A session's turn and its tool calls, as `SessionTracker`
-/// keeps them, and an app's own fold can too.
+/// A session's turn and its tool calls' starts, as `SessionTracker`
+/// keeps them.
 public struct Turn: Sendable {
     /// When the turn now open started, and when the last one ended: a
     /// call's result from before the end landed late.
@@ -109,39 +109,52 @@ public struct Turn: Sendable {
     /// notice: a turn a call started (Claude carrying on after another
     /// hook blocked its `Stop`) had no prompt to race.
     public internal(set) var promptedAt: Int64?
+    /// The number of the last turn you prompted, counting the prompts
+    /// since the tracker first saw the session: 0 before any. A turn a call
+    /// opens with no prompt keeps the number before it.
+    public internal(set) var number = 0
     /// Each running tool call's start, by `tool_use_id`, and the last
     /// one's, for a result that carries no ID or topic.
     var toolStarts: [String: ToolStart] = [:]
     var lastToolStart: ToolStart?
 
-    public init() {}
+    init() {}
 
     /// Claude's idle notice means it has sat at its prompt for a minute,
     /// so one within 30 s of your last prompt is from before it: a new
     /// prompt typed just as the minute ran out.
-    public func isStaleNotice(_ e: AgentEvent, _ step: SessionFold.Step) -> Bool {
+    func isStaleNotice(_ e: AgentEvent, _ step: SessionFold.Step) -> Bool {
         step == .turnStopped && e.notice != nil
             && promptedAt.map { e.at - $0 < SessionFold.idleNoticeMinMs } == true
     }
 
     /// You sent a prompt at `now`: a turn starts.
-    public mutating func prompted(at now: Int64) {
+    mutating func prompted(at now: Int64) {
         startedAt = now
         promptedAt = now
+        number += 1
     }
 
     /// A tool call starting, with its topic, kept for its result.
-    public mutating func callStarted(_ e: AgentEvent) {
+    mutating func callStarted(_ e: AgentEvent) {
         let start = (at: e.at, topic: e.topic)
         if let id = e.toolUseID { toolStarts[id] = start }
         lastToolStart = start
     }
 
-    /// A call's result: its call's start, by `tool_use_id` or else the
-    /// last one's, and whether it landed late: the call started before the
-    /// turn ended or stopped, and none is open (Esc as it finished, or a
-    /// subagent's racing the interrupt), so the turn stays over.
-    public mutating func callEnded(_ e: AgentEvent) -> (started: ToolStart?, late: Bool) {
+    /// The start of the call that the result `e` ends, before the tracker
+    /// handles it: by `tool_use_id`, or else the last call's. When it
+    /// started, and its topic, for a result that came without one (a hook
+    /// line cut short loses it).
+    public func callStart(for e: AgentEvent) -> (at: Int64, topic: String?)? {
+        e.toolUseID.flatMap { toolStarts[$0] } ?? lastToolStart
+    }
+
+    /// A call's result: its call's start (`callStart`), and whether it
+    /// landed late: the call started before the turn ended or stopped, and
+    /// none is open (Esc as it finished, or a subagent's racing the
+    /// interrupt), so the turn stays over.
+    mutating func callEnded(_ e: AgentEvent) -> (started: ToolStart?, late: Bool) {
         let started = e.toolUseID.flatMap { toolStarts.removeValue(forKey: $0) } ?? lastToolStart
         let late = startedAt == nil && started.map { s in lastEndedAt.map { s.at <= $0 } == true } == true
         return (started, late)
@@ -152,14 +165,14 @@ public struct Turn: Sendable {
     /// A subagent's opens none: a background helper that works on after
     /// the main agent's `Stop` is no turn. Whether it did.
     @discardableResult
-    public mutating func openTurn(_ e: AgentEvent) -> Bool {
+    mutating func openTurn(_ e: AgentEvent) -> Bool {
         guard startedAt == nil, e.subagent == nil else { return false }
         startedAt = e.at
         return true
     }
 
     /// The turn open ends at `now`: when it started, or nil with none open.
-    public mutating func endTurn(at now: Int64) -> Int64? {
+    mutating func endTurn(at now: Int64) -> Int64? {
         guard let started = startedAt else { return nil }
         startedAt = nil
         lastEndedAt = now

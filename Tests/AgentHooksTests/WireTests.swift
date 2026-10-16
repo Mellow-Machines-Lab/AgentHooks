@@ -145,6 +145,16 @@ import Testing
         ]), ts: 0))
         #expect(failure.error == "rate_limit")
         #expect(!(String(decoding: failure.encoded(), as: UTF8.self).contains("PRIVATE")))
+        // An error's text is classed in the client, never sent.
+        let text = try #require(HookLine.extract(agent: "claude", payload: payload([
+            "hook_event_name": "StopFailure", "session_id": "s", "error": "Network unreachable: PRIVATE_HOST",
+        ]), ts: 0))
+        #expect(text.error == "network")
+        #expect(!(String(decoding: text.encoded(), as: UTF8.self).contains("PRIVATE")))
+        let coded = try #require(HookLine.extract(agent: "claude", payload: payload([
+            "hook_event_name": "StopFailure", "session_id": "s", "error_type": "server_error",
+        ]), ts: 0))
+        #expect(coded.error == "api_error")
         let note = try #require(HookLine.extract(agent: "claude", payload: payload([
             "hook_event_name": "Notification", "session_id": "s", "notification_type": "permission_prompt",
             "message": "Claude needs your permission to use Bash",
@@ -555,6 +565,22 @@ import Testing
         #expect((ToolError.classify("Exit code 1\nFAILED tests/test_permissions.py::test_admin_can_edit")) == "exit_code")
         #expect((ToolError.classify("something odd")) == "other")
         #expect(ToolError.classify(nil) == "other")
+    }
+
+    /// Every error Claude's `StopFailure` can carry becomes a class, other
+    /// text by what it contains, and a class stays itself, so a line
+    /// classed twice is the same.
+    @Test func testTurnErrorClasses() {
+        let claude = [
+            "rate_limit": "rate_limit", "overloaded": "overloaded", "server_error": "api_error",
+            "invalid_request": "api_error", "model_not_found": "api_error", "max_output_tokens": "context_limit",
+            "authentication_failed": "auth", "oauth_org_not_allowed": "auth", "account_on_hold": "auth",
+            "verification_required": "auth", "cloud_credential_error": "auth", "billing_error": "billing",
+            "unknown": "other",
+        ]
+        for (error, expected) in claude { #expect(TurnError.classify(error) == expected, "\(error)") }
+        #expect(TurnError.classify("Request timeout") == "timeout")
+        for known in TurnError.classes + ["other"] { #expect(TurnError.classify(known) == known) }
     }
 
     /// The tool call's ID and a subagent's type are kept; they carry no content.

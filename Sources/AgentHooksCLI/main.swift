@@ -17,7 +17,8 @@ let usage = """
         Each agent's hooks, and the apps listening.
     agent-hooks tail [--sessions] [--name NAME]
         Listens as NAME (default tail-PID) and prints every event as a JSON line; with --sessions, also
-        each session's state as it changes (working, idle, needs_you, gone). Ctrl-C stops it.
+        each session's state as it changes (working, idle, needs_you, gone), with "expired" when a
+        request nobody answered in 10 minutes stopped showing. Ctrl-C stops it.
     agent-hooks doctor [--hook PATH] [--home DIR]
         Status, then a made-up hook through the client to a socket of its own.
     """
@@ -206,8 +207,8 @@ final class Tail: @unchecked Sendable {
         timer.schedule(deadline: .now() + 1, repeating: 1)
         timer.setEventHandler { [self] in
             guard sessions else { return }
-            tracker.advance(to: now())
-            report(at: now())
+            let time = now()
+            report(at: time, expired: tracker.advance(to: time))
         }
         timer.resume()
         keep.append(timer)
@@ -228,12 +229,15 @@ final class Tail: @unchecked Sendable {
         guard let event = Mapping.event(from: line, receivedAt: now()) else { return }
         print(event.jsonLine)
         guard sessions else { return }
+        // The timers due by the event's time first, to hear what they did.
+        let expired = tracker.advance(to: event.at, sparing: event.key)
         tracker.handle(event)
-        report(at: event.at)
+        report(at: event.at, expired: expired)
     }
 
-    /// Prints each session whose state changed since last time.
-    func report(at time: Int64) {
+    /// Prints each session whose state changed since last time, marking
+    /// one whose request `expired` unanswered.
+    func report(at time: Int64, expired: [String: SessionTracker.Change] = [:]) {
         var states: [String: String] = [:]
         let (waiting, working, idle) = tracker.grouped(at: time)
         for s in waiting { states[s.key] = "needs_you" }
@@ -245,6 +249,7 @@ final class Tail: @unchecked Sendable {
             line["workspace"] = s.workspace
             line["name"] = s.name
             if state == "needs_you" { line["asking"] = (s.asking ?? .permission).rawValue }
+            if expired[key] == .requestExpired { line["expired"] = true }
             let data = try! JSONSerialization.data(withJSONObject: line, options: [.sortedKeys, .withoutEscapingSlashes])
             print(String(decoding: data, as: UTF8.self))
         }
