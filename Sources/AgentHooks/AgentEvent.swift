@@ -44,6 +44,8 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     public var app: String?
     /// The Claude app's own ID for the session (`local_…`).
     public var appSession: String?
+    /// Where in a terminal the agent runs (`TerminalTab`): its tab.
+    public var terminal: TerminalTab?
     /// The agent's permission mode: Claude's `default`, `plan`, `acceptEdits`…
     public var mode: String?
 
@@ -60,6 +62,11 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     /// What a tool call is about: `tests`, `build`, `deploy`, `docs` or
     /// `inspect` (`Topic`).
     public var topic: String?
+    /// An edit tool call's lines added and removed (`EditSize`): on a start,
+    /// what it will change if it goes ahead; on an end, what it changed.
+    /// Only counts, never the text.
+    public var linesAdded: Int?
+    public var linesRemoved: Int?
     /// Whether a tool call failed. Only Claude says; nil from Codex.
     public var failed: Bool?
     /// A failed call's or turn's error, as a short class.
@@ -76,9 +83,9 @@ public struct AgentEvent: Equatable, Codable, Sendable {
 
     public init(agent: Agent, kind: Kind, phase: Phase, hook: String, session: String, at: Int64,
                 subagent: String? = nil, subagentType: String? = nil, cwd: String? = nil, name: String? = nil,
-                app: String? = nil, appSession: String? = nil, mode: String? = nil, source: String? = nil,
-                prompt: String? = nil, tool: String? = nil, toolUseID: String? = nil, topic: String? = nil,
-                failed: Bool? = nil, error: String? = nil, asking: Asking? = nil, notice: String? = nil,
+                app: String? = nil, appSession: String? = nil, terminal: TerminalTab? = nil, mode: String? = nil,
+                source: String? = nil, prompt: String? = nil, tool: String? = nil, toolUseID: String? = nil,
+                topic: String? = nil, linesAdded: Int? = nil, linesRemoved: Int? = nil, failed: Bool? = nil, error: String? = nil, asking: Asking? = nil, notice: String? = nil,
                 outcome: Outcome? = nil, message: String? = nil) {
         self.agent = agent
         self.kind = kind
@@ -92,12 +99,15 @@ public struct AgentEvent: Equatable, Codable, Sendable {
         self.name = name
         self.app = app
         self.appSession = appSession
+        self.terminal = terminal
         self.mode = mode
         self.source = source
         self.prompt = prompt
         self.tool = tool
         self.toolUseID = toolUseID
         self.topic = topic
+        self.linesAdded = linesAdded
+        self.linesRemoved = linesRemoved
         self.failed = failed
         self.error = error
         self.asking = asking
@@ -109,9 +119,10 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     /// Its JSON keys, snake_case both ways, so an event an app wrote reads
     /// back as it was.
     enum CodingKeys: String, CodingKey {
-        case agent, kind, phase, hook, session, at, subagent, cwd, name, app, mode, source, prompt, tool, topic, failed,
-             error, asking, notice, outcome, message
-        case subagentType = "subagent_type", appSession = "app_session", toolUseID = "tool_use_id"
+        case agent, kind, phase, hook, session, at, subagent, cwd, name, app, terminal, mode, source, prompt, tool, topic,
+             failed, error, asking, notice, outcome, message
+        case subagentType = "subagent_type", appSession = "app_session", toolUseID = "tool_use_id",
+             linesAdded = "lines_added", linesRemoved = "lines_removed"
     }
 
     /// The session's key across agents: `claude/s1`.

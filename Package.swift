@@ -14,7 +14,8 @@ let package = Package(
     ],
     targets: [
         // What the hook client and the library share: the hook line, the
-        // socket, topic tags, error classes, thread names and the host app.
+        // socket, topic tags, edit sizes, error classes, thread names, and the
+        // host app and terminal tab.
         // Kept small so the client starts fast.
         .target(name: "AgentHooksWire"),
         // What apps link: events, sessions and "needs you", the listener,

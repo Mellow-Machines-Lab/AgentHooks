@@ -1,6 +1,6 @@
 # How agent-hooks works
 
-Updated 2026-10-15. [README.md](README.md) is the short version. This is
+Updated 2026-10-22. [README.md](README.md) is the short version. This is
 the tour: how the hooks get installed, what happens each time one fires,
 and how that becomes a list of sessions. The code and its tests have
 every rule.
@@ -74,8 +74,8 @@ and pipes it the hook's JSON. The client then:
 2. **Keeps** a few plain facts: which hook, which session, the folder,
    the tool. Each is cut to 200 characters. Without a hook name and a
    session, it sends nothing.
-3. **Adds** the thread's name, as the agent's app shows it, and which
-   app the agent runs in.
+3. **Adds** the thread's name, as the agent's app shows it, which app
+   the agent runs in, and where in its terminal (below).
 4. **Sends** the result as one JSON line to every app listening, and
    exits.
 
@@ -87,9 +87,10 @@ gets 50 ms to take the line, so a stuck listener can't hold it up.
 
 By default the client sends plain facts: the hook's name, the session's
 ID, the folder the agent works in, the tool's name, the permission mode,
-and the bundle ID of the app the agent runs in. Some hooks add a few
-more, all listed under *Its fields* below: the tool call's ID, which
-subagent, a command's topic, an error's class. The one thing you or the
+the bundle ID of the app the agent runs in, and its terminal tab. Some
+hooks add a few more, all listed under *Its fields* below: the tool
+call's ID, which subagent, a command's topic, an edit's size, an
+error's class. The one thing you or the
 agent wrote that leaves by default is the thread's title, as its app
 shows it, and that can sum up your prompt.
 
@@ -111,6 +112,34 @@ only reads. To teach it your own command shapes, add them to
   "build": [["./build.sh"]]
 }
 ```
+
+Edits get a **size** the same way (`EditSize`): lines added and lines
+removed, counted in memory, on `PreToolUse` (what the call will change)
+and `PostToolUse` (what it changed). Claude's `Edit`, `MultiEdit` and
+`Write` are counted from the result's `structuredPatch` when it has one,
+else from the input: an edit's old and new text less the lines they
+share at either end, a `Write`'s content all added. Codex's
+`apply_patch` is counted from its patch's `+` and `-` lines. Only the
+two numbers leave.
+
+### Which terminal tab
+
+So an app can open the agent's own tab, not just its terminal, the
+client reads a few more variables, and keeps each only when it has the
+shape it should (`TerminalTab`):
+
+| Variable | Kept as | Which terminal |
+| --- | --- | --- |
+| `TERM_PROGRAM` | `program` | Any: `iTerm.app`, `Apple_Terminal`, `ghostty`, `tmux`… |
+| `ITERM_SESSION_ID` | `iterm_session`, the part after the colon: the session's `unique id` | iTerm2 |
+| `TERM_SESSION_ID` | `term_session` | Terminal.app (iTerm2 sets it too) |
+| `TMUX_PANE`, `TMUX` | `tmux_pane` (`%3`), `tmux_socket` (the server's socket) | tmux, in any terminal |
+| none | `tty` (`/dev/ttys003`) | Any; Terminal.app's tabs are found by it |
+
+The tty isn't in the environment. A hook's stdin, stdout and stderr are
+pipes, and the hook has no controlling terminal of its own, but the
+agent that runs it does: so the client walks up its parent processes to
+the first with one (`sysctl`'s `e_tdev`), at most 8 up.
 
 ## 3. Any number of apps can listen
 
@@ -178,6 +207,7 @@ form, so an app that keeps events as JSON reads them back with a plain
 | `name` | `Fix the nav` | The thread's name, as the agent's app shows it |
 | `app` | `com.mitchellh.ghostty` | The app the agent runs in, by bundle ID |
 | `app_session` | `local_f0ed…` | The Claude app's own ID for the session |
+| `terminal` | `{"program": "iTerm.app", "iterm_session": "6A3E…", "tty": "/dev/ttys003"}` | Where in a terminal the agent runs (*Which terminal tab*, above) |
 | `mode` | `default` | Claude's permission mode: `default`, `plan`, `acceptEdits`… |
 | `subagent` | `a1b2…` | The Claude subagent it came from; none for the main agent |
 | `subagent_type` | `Explore` | What kind of subagent |
@@ -186,6 +216,7 @@ form, so an app that keeps events as JSON reads them back with a plain
 | `tool` | `Bash` | On a `tool` event: the tool |
 | `tool_use_id` | `toolu_1` | On a `tool` start or end: which call |
 | `topic` | `tests` | What a command is about, without the command |
+| `lines_added`, `lines_removed` | `12`, `3` | On an edit's `tool` start or end: its size in lines, never its text |
 | `asking` | `permission` | On a `tool` wait: `permission`, or `input` for a question |
 | `notice` | `permission_prompt` | When the event came from Claude's `Notification`, its type |
 | `failed` | `false` | On a Claude `tool` end: whether the call failed |
@@ -217,9 +248,9 @@ starts, and the session is working; then Claude asks permission, and the
 session needs you:
 
 ```json
-{"agent":"claude","app":"com.mitchellh.ghostty","at":1791707045939,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PreToolUse","kind":"tool","mode":"default","phase":"start","session":"s1","tool":"Bash","tool_use_id":"toolu_1","topic":"tests"}
+{"agent":"claude","app":"com.mitchellh.ghostty","at":1791707045939,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PreToolUse","kind":"tool","mode":"default","phase":"start","session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash","tool_use_id":"toolu_1","topic":"tests"}
 {"at":1791707045939,"project":"landing","session":"claude/s1","state":"working","workspace":"fix-nav"}
-{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707046252,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","tool":"Bash"}
+{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707046252,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash"}
 {"asking":"permission","at":1791707046252,"project":"landing","session":"claude/s1","state":"needs_you","workspace":"fix-nav"}
 ```
 
@@ -346,13 +377,24 @@ The library has a few more pieces for apps:
 - `HookInstaller` installs, checks and repairs the hooks, from your
   own app.
 - `Place` and `Places` name a folder's project and workspace.
-- `ThreadLink` opens a session's thread in the app it runs in.
+- `ThreadLink` opens a session's thread where it runs: in the Claude or
+  Codex app by a link; in iTerm2 (by the session's `unique id`, else its
+  tty) or Terminal.app (by the tab's tty) with an AppleScript run by
+  `osascript`; in tmux by selecting its pane (`tmux select-window`,
+  `select-pane`) and bringing the terminal forward; otherwise by
+  bringing the agent's app forward, as it also does when a script finds
+  no tab. Each id is checked against its shape again before it goes into
+  a script or a command. The first time your app scripts iTerm2 or
+  Terminal.app, macOS asks you to allow it (System Settings, Privacy &
+  Security, Automation), and an app needs `NSAppleEventsUsageDescription`
+  in its `Info.plist` for macOS to ask at all.
 
 ## Good to know
 
 - **Some of it reads undocumented internals**: the thread's name
   (Claude's transcript, Codex's `session_index.jsonl`), which app the
-  agent runs in, and what Claude's idle notification means. An agent
+  agent runs in, its terminal tab, the shape of Claude's edit results
+  and Codex's `PostToolUse` input (both not yet recorded), and what Claude's idle notification means. An agent
   update can break these. If one does, the name goes missing or the
   thread doesn't open, but the events still come.
 - **Hooks can't see everything.** No hook says you approved, so a long
