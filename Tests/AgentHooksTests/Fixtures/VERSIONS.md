@@ -19,7 +19,12 @@ Raw hook payloads, one directory per agent:
   session of edits whose sizes are counted: Claude's `Edit`, `MultiEdit`
   and `Write`, with results' `structuredPatch` in the shape Claude Code
   gives, and Codex's `apply_patch` with its `PostToolUse` carrying
-  `tool_input`, as its hooks' reference gives, neither yet recorded.
+  `tool_input`, as its hooks' reference gives, neither yet recorded; and
+  the agent's to-do list: Claude's `tasks.jsonl` (`TaskCreate` and
+  `TaskUpdate`, one denied, a task deleted and a new list started) and
+  `todowrite.jsonl` (the older `TodoWrite`, with a subagent's own list),
+  and Codex's `plan.jsonl` (`update_plan`), in the shapes their tools
+  give, not yet recorded.
 
 A line `{"wait_ms": N}` moves a replay's clock. `WireTests` walks every
 file and checks that only your prompt and the agent's last message reach

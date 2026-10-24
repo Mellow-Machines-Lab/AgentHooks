@@ -32,9 +32,13 @@ public enum ThreadLink {
         switch thread.agent {
         case "claude":
             // The Claude app opens a session by its own ID, which the hook
-            // got from the app, not by Claude Code's.
+            // got from the app, not by Claude Code's: one it runs, or a
+            // remote session it drives by Remote Control.
             if let id = thread.appSession, id.range(of: #"^local_[A-Za-z0-9-]{1,64}$"#, options: .regularExpression) != nil {
                 return .url("claude://code/continue?session=\(id)")
+            }
+            if let id = thread.appSession, HostApp.remoteShapes.contains(where: { $0.matches(id) }) {
+                return .url("claude://code/\(id)")
             }
         case "codex":
             // The Codex app opens a thread by its ID, which is the hook's
@@ -48,7 +52,11 @@ public enum ThreadLink {
             break
         }
         guard let app = thread.app else { return nil }
-        if let tab = thread.terminal, opensTab(app: app, tab) { return .terminal(app: app, tab: tab) }
+        // A session that opens in an agent's app (Remote Control's, run in a
+        // terminal) isn't opened in that terminal.
+        if let tab = thread.terminal, app != HostApp.claude, app != HostApp.codex, opensTab(app: app, tab) {
+            return .terminal(app: app, tab: tab)
+        }
         return .app(app)
     }
 
@@ -195,7 +203,7 @@ public struct ThreadRef: Equatable, Sendable {
     public var session: String
     /// The app's bundle ID (`HostApp`), when the hooks said.
     public var app: String?
-    /// The Claude app's `local_…` ID.
+    /// The Claude app's ID: `local_…`, or a remote session's `session_…`.
     public var appSession: String?
     /// Where in a terminal it runs (`TerminalTab`), when the hooks said.
     public var terminal: TerminalTab?

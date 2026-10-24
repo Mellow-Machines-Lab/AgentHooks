@@ -4,8 +4,8 @@ import Foundation
 /// below. Tool input and file contents never get this far; the
 /// topic tag is worked out from the tool input in memory, then the input
 /// is dropped with the rest of the payload. The only words it can keep are
-/// your prompt (`UserPromptSubmit`) and the agent's last message (`Stop`),
-/// and only with `--keep-text`.
+/// your prompt (`UserPromptSubmit`) and the agent's last message
+/// (`Stop`), and only with `--keep-text`.
 public struct HookLine: Equatable, Sendable {
     /// `claude` or `codex`, from `agent-hook <agent>`.
     public var agent: String
@@ -50,8 +50,10 @@ public struct HookLine: Equatable, Sendable {
     /// The app the agent runs in, by bundle ID (`HostApp`): the Claude or
     /// Codex app, or the terminal: where the thread can be opened.
     public var app: String?
-    /// The Claude app's own ID for the session (`local_…`), which its links
-    /// open; nil outside the Claude app.
+    /// The Claude app's own ID for the session, which its links open:
+    /// `local_…`, or by Remote Control the remote session's `session_…`,
+    /// only as a session or turn starts (`HostApp.recordHooks`); nil
+    /// outside the Claude app.
     public var appSession: String?
     /// Where in a terminal the agent runs (`TerminalTab`), so its tab can be
     /// opened; nil outside a terminal.
@@ -61,6 +63,17 @@ public struct HookLine: Equatable, Sendable {
     /// removed. Only the counts; the text stays in `agent-hook`.
     public var linesAdded: Int?
     public var linesRemoved: Int?
+    /// The agent's process (`AgentProcess`), on every hook that finds it.
+    public var process: AgentProcess?
+    /// A task the agent created or updated (`TaskCreate`, `TaskUpdate`),
+    /// on its `PostToolUse`: its ID and its new status (`todoStatuses`),
+    /// none when an update changed something else.
+    public var todoID: String?
+    public var todoStatus: String?
+    /// The agent's whole to-do list (`TodoWrite`, `update_plan`), on its
+    /// `PreToolUse`: how many items are completed, of how many.
+    public var todosDone: Int?
+    public var todosTotal: Int?
     /// When the hook ran, in milliseconds.
     public var ts: Int64
 
@@ -69,7 +82,9 @@ public struct HookLine: Equatable, Sendable {
                 toolError: String? = nil, toolUseID: String? = nil, agentType: String? = nil,
                 agentID: String? = nil, message: String? = nil, prompt: String? = nil, name: String? = nil,
                 source: String? = nil, mode: String? = nil, app: String? = nil, appSession: String? = nil,
-                terminal: TerminalTab? = nil, linesAdded: Int? = nil, linesRemoved: Int? = nil, ts: Int64) {
+                terminal: TerminalTab? = nil, linesAdded: Int? = nil, linesRemoved: Int? = nil,
+                process: AgentProcess? = nil, todoID: String? = nil, todoStatus: String? = nil, todosDone: Int? = nil,
+                todosTotal: Int? = nil, ts: Int64) {
         self.agent = agent
         self.hook = hook
         self.session = session
@@ -93,6 +108,11 @@ public struct HookLine: Equatable, Sendable {
         self.terminal = terminal
         self.linesAdded = linesAdded
         self.linesRemoved = linesRemoved
+        self.process = process
+        self.todoID = todoID
+        self.todoStatus = todoStatus
+        self.todosDone = todosDone
+        self.todosTotal = todosTotal
         self.ts = ts
     }
 
@@ -111,19 +131,23 @@ public struct HookLine: Equatable, Sendable {
     /// payload has no hook name or session. With `codexHome`, the line also
     /// gets the thread's name (`ThreadName`); without it, neither agent's
     /// is looked up. `env` is the hook's environment, which says what app
-    /// the agent runs in (`HostApp`) and where in a terminal (`TerminalTab`,
-    /// with `tty`, the agent's controlling terminal). `keepText` keeps your prompt and the
-    /// agent's last message; `topics` adds command patterns to the topic
-    /// tags (`Topic.extraPatterns`).
+    /// the agent runs in (`HostApp`, with `home`, where Claude Code keeps
+    /// its config folder unless `env` says) and where in a terminal
+    /// (`TerminalTab`, with `tty`, the agent's controlling terminal).
+    /// `process` is the agent's (`AgentProcess.find`). `keepText` keeps
+    /// your prompt and the agent's last message; `topics`
+    /// adds command patterns to the topic tags (`Topic.extraPatterns`).
     public static func extract(agent: String, payload: Data, ts: Int64, codexHome: String? = nil,
-                               env: [String: String] = [:], tty: String? = nil, keepText: Bool = false,
+                               env: [String: String] = [:], tty: String? = nil, process: AgentProcess? = nil,
+                               home: String = NSHomeDirectory(), keepText: Bool = false,
                                topics: [String: [[String]]] = [:]) -> HookLine? {
-        var line = (try? JSONSerialization.jsonObject(with: payload) as? [String: Any])
-            .flatMap { extract(agent: agent, json: $0, ts: ts, codexHome: codexHome, keepText: keepText, topics: topics) }
-            ?? salvage(agent: agent, payload: payload, ts: ts)
-        line?.app = HostApp.bundleID(agent: agent, env: env)
-        line?.appSession = HostApp.session(agent: agent, env: env)
-        line?.terminal = TerminalTab.from(env: env, tty: tty)
+        guard var line = (try? JSONSerialization.jsonObject(with: payload) as? [String: Any])
+            .flatMap({ extract(agent: agent, json: $0, ts: ts, codexHome: codexHome, keepText: keepText, topics: topics) })
+            ?? salvage(agent: agent, payload: payload, ts: ts) else { return nil }
+        line.app = HostApp.bundleID(agent: agent, env: env)
+        line.appSession = HostApp.session(agent: agent, env: env, hook: line.hook, pid: process?.pid, home: home)
+        line.terminal = TerminalTab.from(env: env, tty: tty)
+        line.process = process
         return line
     }
 
@@ -149,6 +173,9 @@ public struct HookLine: Equatable, Sendable {
                                       response: hook == "PostToolUse" ? json["tool_response"] : nil) {
                 line.linesAdded = size.added
                 line.linesRemoved = size.removed
+            }
+            if hook == "PreToolUse" || hook == "PostToolUse" {
+                line.readTodos(hook: hook, input: json["tool_input"], response: json["tool_response"])
             }
             line.interrupt = hook == "PostToolUseFailure" && json["is_interrupt"] as? Bool == true
             if hook == "PostToolUseFailure" && !line.interrupt {
@@ -209,6 +236,7 @@ public struct HookLine: Equatable, Sendable {
         ("tool_error", \.toolError), ("tool_use_id", \.toolUseID), ("agent_type", \.agentType),
         ("agent_id", \.agentID), ("message", \.message), ("prompt", \.prompt), ("name", \.name),
         ("source", \.source), ("mode", \.mode), ("app", \.app), ("app_session", \.appSession),
+        ("todo_id", \.todoID), ("todo_status", \.todoStatus),
     ]
 
     /// The terminal's fields, by their names on the wire, which are its
@@ -231,6 +259,12 @@ public struct HookLine: Equatable, Sendable {
         for (key, field) in Self.wire { if let value = self[keyPath: field] { object[key] = value } }
         if let linesAdded { object["lines_added"] = linesAdded }
         if let linesRemoved { object["lines_removed"] = linesRemoved }
+        if let todosDone { object["todos_done"] = todosDone }
+        if let todosTotal { object["todos_total"] = todosTotal }
+        if let process {
+            object["pid"] = process.pid
+            object["pid_start"] = process.started
+        }
         if let terminal {
             var tab: [String: Any] = [:]
             for (key, field) in Self.terminalWire { if let value = terminal[keyPath: field] { tab[key] = value } }
@@ -254,6 +288,11 @@ public struct HookLine: Equatable, Sendable {
         }
         line.linesAdded = count(object["lines_added"])
         line.linesRemoved = count(object["lines_removed"])
+        line.todosDone = count(object["todos_done"])
+        line.todosTotal = count(object["todos_total"])
+        if let pid = count(object["pid"]), pid > 1, pid <= Int(Int32.max), let started = count(object["pid_start"]) {
+            line.process = AgentProcess(pid: Int32(pid), started: Int64(started))
+        }
         if let tab = object["terminal"] as? [String: Any] {
             var terminal = TerminalTab()
             for (key, field) in terminalWire { terminal[keyPath: field] = string(tab[key]) }

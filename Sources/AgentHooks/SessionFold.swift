@@ -41,12 +41,14 @@ public struct SessionFold: Sendable {
         step == .subagentStart || step == .subagentEnd || (e.subagent != nil && turnLevel.contains(step))
     }
 
-    /// A working session with no events for this long counts as idle.
+    /// A working session with no events for this long counts as idle,
+    /// when it has no process to check.
     public static let staleWorkMs: Int64 = 60 * 60 * 1000
-    /// A session with no events for this long is forgotten.
+    /// A session with no events for this long is forgotten, unless its
+    /// agent's process keeps it waiting or working.
     public static let forgetMs: Int64 = 24 * 60 * 60 * 1000
     /// "Needs you" clears anyway after this long with no events, and the
-    /// session goes idle.
+    /// session goes idle, when it has no process to check.
     public static let safetyNetMs: Int64 = 10 * 60 * 1000
     /// Claude's idle notice comes after a minute at its prompt, so one
     /// sooner than this after you sent a prompt is from before it.

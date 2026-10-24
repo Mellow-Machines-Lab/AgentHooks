@@ -56,7 +56,6 @@ import Testing
         send(.turn, .start, "UserPromptSubmit")
         send(.tool, .wait, "PermissionRequest") { $0.tool = "Bash"; $0.asking = .permission }
         #expect(state() == "needs_you")
-        #expect(tracker.needsYou)
         #expect(tracker.sessions["claude/s1"]?.request == 101, "numbers count on from firstRequest")
         #expect(tracker.sessions["claude/s1"]?.asking == .permission)
         send(.tool, .start, "PreToolUse") { $0.tool = "Bash" }

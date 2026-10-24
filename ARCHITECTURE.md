@@ -1,6 +1,6 @@
 # How agent-hooks works
 
-Updated 2026-10-22. [README.md](README.md) is the short version. This is
+Updated 2026-10-24. [README.md](README.md) is the short version. This is
 the tour: how the hooks get installed, what happens each time one fires,
 and how that becomes a list of sessions. The code and its tests have
 every rule.
@@ -75,7 +75,8 @@ and pipes it the hook's JSON. The client then:
    the tool. Each is cut to 200 characters. Without a hook name and a
    session, it sends nothing.
 3. **Adds** the thread's name, as the agent's app shows it, which app
-   the agent runs in, and where in its terminal (below).
+   the agent runs in, where in its terminal, and the agent's process
+   (below).
 4. **Sends** the result as one JSON line to every app listening, and
    exits.
 
@@ -87,16 +88,18 @@ gets 50 ms to take the line, so a stuck listener can't hold it up.
 
 By default the client sends plain facts: the hook's name, the session's
 ID, the folder the agent works in, the tool's name, the permission mode,
-the bundle ID of the app the agent runs in, and its terminal tab. Some
+the bundle ID of the app the agent runs in, its terminal tab, and the
+agent's process ID and start time. Some
 hooks add a few more, all listed under *Its fields* below: the tool
-call's ID, which subagent, a command's topic, an edit's size, an
-error's class. The one thing you or the
+call's ID, which subagent, a command's topic, an edit's size, the
+to-do list's counts, an error's class. The one thing you or the
 agent wrote that leaves by default is the thread's title, as its app
 shows it, and that can sum up your prompt.
 
-Install with `--keep-text` and two more things come along, up to 2,000
-characters each: your prompt, and the agent's last message. Commands,
-tool output, error text, file contents and transcripts never leave.
+Install with `--keep-text` and two more things come along: your
+prompt and the agent's last message, up to 2,000 characters each.
+Commands, tool output, a to-do's words, error text, file contents and
+transcripts never leave.
 
 Lines go only to Unix sockets in `~/.agent-hooks/sockets/`, a folder
 only you can write to, and never over the network.
@@ -121,6 +124,42 @@ else from the input: an edit's old and new text less the lines they
 share at either end, a `Write`'s content all added. Codex's
 `apply_patch` is counted from its patch's `+` and `-` lines. Only the
 two numbers leave.
+
+The agent's **to-do list** leaves as counts. Claude Code keeps it one
+task at a time: each `TaskCreate` and `TaskUpdate` gives the task's ID
+and its new status (`pending`, `in_progress`, `completed` or
+`deleted`), read from the call's `PostToolUse`, so a call you deny
+changes nothing. Claude's older `TodoWrite` and Codex's `update_plan`
+send the whole list each time, read from the `PreToolUse`: how many
+items are completed, of how many. Nothing of an item but its status
+leaves, even with `--keep-text`.
+
+### The agent's process
+
+So an app can tell an agent waiting on you, or working, from one
+that's gone (its terminal closed, it crashed, its app quit) without a
+`SessionEnd`, the client finds the agent's process (`AgentProcess`): it
+walks up from its parent, at most 8 up, to Claude Code's `CLAUDE_PID`
+when that's one of them, else to the first that isn't a shell or a
+launcher (`sh`, `bash`,
+`zsh`, `dash`, `fish`, `ksh`, `tcsh`, `csh`, `env`). It sends the pid
+and the process's start time (`sysctl`'s `p_starttime`), since a pid is
+reused once its process ends.
+
+### Remote Control
+
+A Claude Code session the Claude app drives by Remote Control runs in a
+terminal (`claude rc`), and its hooks have the terminal's bundle ID. But
+`CLAUDE_CODE_ENVIRONMENT_KIND` is `bridge`, so the client names the
+Claude app instead, and its `app_session` is the remote session's ID,
+`session_…`, which the app's links open. That ID is in Claude Code's
+record of the agent's process, `sessions/<pid>.json` in its config folder
+(`$CLAUDE_CONFIG_DIR`, else `~/.claude`): the client reads only that
+file, only its first 64 KB, and keeps only its `bridgeSessionId`, when
+it has its shape. It reads it only on the hooks that start a session or
+a turn (`SessionStart`, `UserPromptSubmit`), so a tool call reads no
+file; the tracker keeps the last one it was sent. Without it, the session still opens in the Claude
+app, which is brought forward.
 
 ### Which terminal tab
 
@@ -206,9 +245,10 @@ form, so an app that keeps events as JSON reads them back with a plain
 | `cwd` | `/Users/you/src/landing` | The folder the agent works in |
 | `name` | `Fix the nav` | The thread's name, as the agent's app shows it |
 | `app` | `com.mitchellh.ghostty` | The app the agent runs in, by bundle ID |
-| `app_session` | `local_f0ed…` | The Claude app's own ID for the session |
+| `app_session` | `local_f0ed…` | The Claude app's own ID for the session: `local_…`, or by Remote Control the remote session's `session_…`, only on a session's or turn's start |
 | `terminal` | `{"program": "iTerm.app", "iterm_session": "6A3E…", "tty": "/dev/ttys003"}` | Where in a terminal the agent runs (*Which terminal tab*, above) |
 | `mode` | `default` | Claude's permission mode: `default`, `plan`, `acceptEdits`… |
+| `process` | `{"pid": 17881, "started": 1791706851309}` | The agent's process, and when it started, in milliseconds (*The agent's process*, above) |
 | `subagent` | `a1b2…` | The Claude subagent it came from; none for the main agent |
 | `subagent_type` | `Explore` | What kind of subagent |
 | `source` | `startup` | On a `session` start: `startup`, `resume`, `clear` or `compact` |
@@ -217,6 +257,8 @@ form, so an app that keeps events as JSON reads them back with a plain
 | `tool_use_id` | `toolu_1` | On a `tool` start or end: which call |
 | `topic` | `tests` | What a command is about, without the command |
 | `lines_added`, `lines_removed` | `12`, `3` | On an edit's `tool` start or end: its size in lines, never its text |
+| `todo_id`, `todo_status` | `1`, `completed` | On a `tool` end: a task the agent created or updated, and its new status |
+| `todos_done`, `todos_total` | `1`, `3` | On a `tool` start: the agent's whole to-do list, as counts |
 | `asking` | `permission` | On a `tool` wait: `permission`, or `input` for a question |
 | `notice` | `permission_prompt` | When the event came from Claude's `Notification`, its type |
 | `failed` | `false` | On a Claude `tool` end: whether the call failed |
@@ -227,7 +269,8 @@ form, so an app that keeps events as JSON reads them back with a plain
 In Swift these are `AgentEvent`'s properties, in camel case. It adds
 **`toolKind`**, worked out from `tool`, so you needn't learn every
 agent's tool names: `shell`, `edit`, `read`, `search`, `web`,
-`subagent`, `planning`, `mcp` or `other`.
+`subagent`, `planning` (which includes the to-do tools), `mcp` or
+`other`.
 
 ## 5. Events become sessions
 
@@ -242,15 +285,22 @@ rather than keeping sessions of its own: then the two can't disagree.
 `turn.callStart(for:)` finds a result's call before the tracker handles
 it, for a result whose hook line lost its topic.
 
+Each session also keeps the agent's process (`process`), and its to-do
+list (`todos`: `done` and `total`). A whole list replaces it; a task is
+kept by its ID until it's deleted, and one created once every task is
+completed starts a new list. The list lasts from turn to turn, as the agent's
+does, until a prompt finds it all done, and goes when the session ends. A subagent's whole list is its
+own, and doesn't count.
+
 Here's Claude asking to run the tests in a worktree, as
 `agent-hooks tail --sessions` printed it, one line each. The tool call
 starts, and the session is working; then Claude asks permission, and the
 session needs you:
 
 ```json
-{"agent":"claude","app":"com.mitchellh.ghostty","at":1791707045939,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PreToolUse","kind":"tool","mode":"default","phase":"start","session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash","tool_use_id":"toolu_1","topic":"tests"}
+{"agent":"claude","app":"com.mitchellh.ghostty","at":1791707045939,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PreToolUse","kind":"tool","mode":"default","phase":"start","process":{"pid":17881,"started":1791706851309},"session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash","tool_use_id":"toolu_1","topic":"tests"}
 {"at":1791707045939,"project":"landing","session":"claude/s1","state":"working","workspace":"fix-nav"}
-{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707046252,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash"}
+{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707046252,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","process":{"pid":17881,"started":1791706851309},"session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash"}
 {"asking":"permission","at":1791707046252,"project":"landing","session":"claude/s1","state":"needs_you","workspace":"fix-nav"}
 ```
 
@@ -269,11 +319,24 @@ It has to be right every time, and the hooks don't make that easy:
   mustn't bring it back.
 - **Nothing reports an answer.** No hook says you approved or pressed
   Esc, so the next event has to say.
+- **Nothing reports an agent gone.** Close its terminal and no
+  `SessionEnd` comes. So every 5 s, the tracker checks each session
+  silent that long that waits on you or works: if its agent's process
+  has ended, its request clears and its turn stops, and the session
+  stays, idle. The tracker says so (`agentGone`), so an app can tell
+  that from an answer, and `agent-hooks tail --sessions` marks the
+  session's `idle` line `"agent_gone":true`. While the process runs, a
+  request waits, and a turn works, however long it's silent. A Mac that
+  slept needs nothing special: the next check sees.
 
-A session that's been silent for 10 minutes stops needing you, whatever
-happened. The tracker says so (the request expired), so an app can tell
-that from an answer, and `agent-hooks tail --sessions` marks that line
-`"expired":true`.
+An idle session's process isn't checked, and doesn't keep it: one
+process can outlive many sessions (the Codex app's one server, a new
+thread in a running CLI), and one may end with each turn. Any idle
+session is forgotten after a silent day. A session with no process to
+check (from an older hook client) stops needing you after 10 silent
+minutes, whatever happened; the tracker says so (the request expired),
+and `agent-hooks tail --sessions` marks that line `"expired":true`. Such
+a session silent for an hour isn't working.
 
 ## The command line
 
@@ -314,13 +377,15 @@ Three pieces do the work:
 - `Mapping.event(from:)` turns each line into an `AgentEvent`.
 - `SessionTracker` keeps the sessions. Touch it from one queue, and call
   `advance(to:)` about once a second so its timers run. It returns what
-  the timers did that the table can't show: each request that expired
-  (`requestExpired`). `handle` runs the timers due by its event's time
+  the timers did that the table can't show: each session that stopped
+  because its agent is gone (`agentGone`), and each request that expired
+  (`requestExpired`).
+  `handle` runs the timers due by its event's time
   too, so to hear those, call `advance(to: event.at, sparing: event.key)`
   first.
 
-This prints each time an agent starts waiting on you, and each time a
-request nobody answered expires:
+This prints each time an agent starts waiting on you, and each time one
+is gone or a request nobody answered expires:
 
 ```swift
 import AgentHooks
@@ -339,14 +404,14 @@ final class Watcher: @unchecked Sendable {
         let server = HookServer(path: socket) { [self] line in
             queue.async { [self] in
                 guard let event = Mapping.event(from: line, receivedAt: now()) else { return }
-                let expired = tracker.advance(to: event.at, sparing: event.key)
+                let timers = tracker.advance(to: event.at, sparing: event.key)
                 tracker.handle(event)
-                report(expired)
+                report(timers)
             }
         }
         try server.start()
         try HookSocket.register(socket, as: "needs-you")  // agent-hook now sends here too
-        // The timers: Codex's 2 s grace, the 10-minute safety net.
+        // The timers: Codex's 2 s grace, the check that agents still run.
         let tick = DispatchSource.makeTimerSource(queue: queue)
         tick.schedule(deadline: .now() + 1, repeating: 1)
         tick.setEventHandler { [self] in
@@ -356,8 +421,14 @@ final class Watcher: @unchecked Sendable {
         keep = [server, tick]
     }
 
-    func report(_ expired: [String: SessionTracker.Change]) {
-        for key in expired.keys.sorted() { print("\(key) stopped waiting: nobody answered in 10 minutes") }
+    func report(_ timers: [String: SessionTracker.Change]) {
+        for (key, change) in timers.sorted(by: { $0.key < $1.key }) {
+            switch change {
+            case .agentGone: print("\(key) stopped: its agent quit")
+            case .requestExpired: print("\(key) stopped waiting: nobody answered in 10 minutes")
+            default: break
+            }
+        }
         let asking = tracker.grouped(at: now()).waiting
         for s in asking where !waiting.contains(s.key) {
             let what = s.asking == .input ? "has a question" : "wants permission"
@@ -378,7 +449,8 @@ The library has a few more pieces for apps:
   own app.
 - `Place` and `Places` name a folder's project and workspace.
 - `ThreadLink` opens a session's thread where it runs: in the Claude or
-  Codex app by a link; in iTerm2 (by the session's `unique id`, else its
+  Codex app by a link (a Remote Control session's by its remote
+  session, `claude://code/session_…`); in iTerm2 (by the session's `unique id`, else its
   tty) or Terminal.app (by the tab's tty) with an AppleScript run by
   `osascript`; in tmux by selecting its pane (`tmux select-window`,
   `select-pane`) and bringing the terminal forward; otherwise by
@@ -393,8 +465,10 @@ The library has a few more pieces for apps:
 
 - **Some of it reads undocumented internals**: the thread's name
   (Claude's transcript, Codex's `session_index.jsonl`), which app the
-  agent runs in, its terminal tab, the shape of Claude's edit results
-  and Codex's `PostToolUse` input (both not yet recorded), and what Claude's idle notification means. An agent
+  agent runs in, its terminal tab, a Remote Control session's ID
+  (Claude Code's `sessions/<pid>.json`), the shape of Claude's edit
+  results, its task tools and Codex's `PostToolUse` and `update_plan`
+  input (none yet recorded), and what Claude's idle notification means. An agent
   update can break these. If one does, the name goes missing or the
   thread doesn't open, but the events still come.
 - **Hooks can't see everything.** No hook says you approved, so a long

@@ -15,6 +15,17 @@ import Testing
         #expect((target("claude", app: HostApp.claude, appSession: "local_x&q=1")) == .app(HostApp.claude), "an ID that isn't one isn't put in a link")
     }
 
+    /// A remote session, which it drives by Remote Control, by that
+    /// session's ID.
+    @Test func testClaudeOpensARemoteSessionByItsID() {
+        #expect(target("claude", app: HostApp.claude, appSession: "session_01AbC") == .url("claude://code/session_01AbC"))
+        #expect(target("claude", app: HostApp.claude, appSession: "cse_011dym") == .url("claude://code/cse_011dym"))
+        #expect(target("claude", app: HostApp.claude, appSession: "session_01-x") == .app(HostApp.claude))
+        #expect(target("claude", app: HostApp.claude, appSession: "session_") == .app(HostApp.claude))
+        #expect(target("codex", "t1", app: HostApp.codex, appSession: "session_01AbC") == .url("codex://threads/t1"),
+                "Claude's alone")
+    }
+
     @Test func testCodexOpensInTheCodexAppByItsThreadID() {
         #expect((target("codex", "01a0e6fd-587d-74a2", app: HostApp.codex)) == (.url("codex://threads/01a0e6fd-587d-74a2")))
         #expect((target("codex", "01a0e6fd")) == (.url("codex://threads/01a0e6fd")), "no app named: Codex's own")

@@ -18,7 +18,10 @@ let usage = """
     agent-hooks tail [--sessions] [--name NAME]
         Listens as NAME (default tail-PID) and prints every event as a JSON line; with --sessions, also
         each session's state as it changes (working, idle, needs_you, gone), with "expired" when a
-        request nobody answered in 10 minutes stopped showing. Ctrl-C stops it.
+        request nobody answered stopped showing after 10 silent minutes (only for an agent whose process
+        can't be checked), and "agent_gone" when a session stopped waiting or working because its agent's
+        process ended.
+        Ctrl-C stops it.
     agent-hooks doctor [--hook PATH] [--home DIR]
         Status, then a made-up hook through the client to a socket of its own.
     """
@@ -208,7 +211,7 @@ final class Tail: @unchecked Sendable {
         timer.setEventHandler { [self] in
             guard sessions else { return }
             let time = now()
-            report(at: time, expired: tracker.advance(to: time))
+            report(at: time, timers: tracker.advance(to: time))
         }
         timer.resume()
         keep.append(timer)
@@ -230,14 +233,15 @@ final class Tail: @unchecked Sendable {
         print(event.jsonLine)
         guard sessions else { return }
         // The timers due by the event's time first, to hear what they did.
-        let expired = tracker.advance(to: event.at, sparing: event.key)
+        let timers = tracker.advance(to: event.at, sparing: event.key)
         tracker.handle(event)
-        report(at: event.at, expired: expired)
+        report(at: event.at, timers: timers)
     }
 
     /// Prints each session whose state changed since last time, marking
-    /// one whose request `expired` unanswered.
-    func report(at time: Int64, expired: [String: SessionTracker.Change] = [:]) {
+    /// what the `timers` did: a request that expired unanswered, a session
+    /// that stopped because its agent is gone.
+    func report(at time: Int64, timers: [String: SessionTracker.Change] = [:]) {
         var states: [String: String] = [:]
         let (waiting, working, idle) = tracker.grouped(at: time)
         for s in waiting { states[s.key] = "needs_you" }
@@ -249,7 +253,8 @@ final class Tail: @unchecked Sendable {
             line["workspace"] = s.workspace
             line["name"] = s.name
             if state == "needs_you" { line["asking"] = (s.asking ?? .permission).rawValue }
-            if expired[key] == .requestExpired { line["expired"] = true }
+            if timers[key] == .requestExpired { line["expired"] = true }
+            if timers[key] == .agentGone { line["agent_gone"] = true }
             let data = try! JSONSerialization.data(withJSONObject: line, options: [.sortedKeys, .withoutEscapingSlashes])
             print(String(decoding: data, as: UTF8.self))
         }

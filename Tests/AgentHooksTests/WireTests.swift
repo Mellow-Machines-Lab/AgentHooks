@@ -189,8 +189,8 @@ import Testing
 
     /// From every recorded payload, the only words that can
     /// reach the line are your prompt and the agent's last message, and
-    /// only with `--keep-text`: no tool input or output, error text or
-    /// transcript.
+    /// only with `--keep-text`: no tool input or output, a to-do's words,
+    /// error text or transcript.
     @Test func testOnlyThePromptAndLastMessageFromAnyRecordedFixtureReachTheLine() throws {
         let files = FileManager.default.enumerator(at: WireTests.fixtures, includingPropertiesForKeys: nil)!
             .compactMap { $0 as? URL }.filter { ["json", "jsonl"].contains($0.pathExtension) }

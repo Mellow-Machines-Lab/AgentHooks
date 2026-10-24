@@ -5,7 +5,8 @@ import Foundation
 /// events `Mapping` makes. The rules are the fiddly part of agent-hooks:
 /// Codex's early request and its grace, a `Notification` that repeats a
 /// request its own hook makes, subagents asking alongside their parent,
-/// hooks that land after their session ended, and the safety net.
+/// hooks that land after their session ended, an agent whose process
+/// ended while it waited or worked, and the safety net.
 ///
 /// It's a pure state machine with no queue or clock of its own: `handle`
 /// takes each event at its time, and `advance` runs the timers, about once
@@ -30,6 +31,17 @@ public final class SessionTracker {
         public internal(set) var sawSubagent = false
     }
 
+    /// An agent's to-do list, as counts.
+    public struct Todos: Equatable, Sendable {
+        public let done: Int
+        public let total: Int
+
+        public init(done: Int, total: Int) {
+            self.done = done
+            self.total = total
+        }
+    }
+
     /// One session.
     public struct Session: Sendable {
         public let agent: Agent
@@ -49,6 +61,16 @@ public final class SessionTracker {
         public internal(set) var terminal: TerminalTab?
         /// The permission mode the last event that had one said.
         public internal(set) var mode: String?
+        /// The agent's process, the last an event brought. It matters only
+        /// while the session waits or works: while it runs, a request waits
+        /// and a turn works however long they're silent; when it ends, the
+        /// request clears and the work stops, and the session stays, idle.
+        /// Nil from an older hook client.
+        public internal(set) var process: AgentProcess?
+        /// The agent's to-do list, as its last word on it said; nil before
+        /// any, once it's empty, or once a prompt finds it all done. It
+        /// lasts from turn to turn, as the agent's list does.
+        public internal(set) var todos: Todos?
         /// Working on a turn: not idle, and not waiting on "needs you". A
         /// Codex request in its grace still counts as working.
         public internal(set) var working = false
@@ -88,6 +110,8 @@ public final class SessionTracker {
         /// is a copy.
         var notices: Set<String> = []
         var clearedNotices: Set<String> = []
+        /// The tasks on its list: each one's status, by ID.
+        var tasks: [String: String] = [:]
 
         init(agent: Agent, id: String, project: String, lastEventAt: Int64, order: Int) {
             self.agent = agent
@@ -125,8 +149,14 @@ public final class SessionTracker {
         case subagentEnded(returned: Bool)
         case sessionEnded
         /// A request nobody answered stopped showing: its session was
-        /// silent for 10 minutes (the safety net). Only `advance` says it.
+        /// silent for 10 minutes and has no process to check (the safety
+        /// net). Only `advance` says it.
         case requestExpired
+        /// Its agent's process ended while it waited or worked (its
+        /// terminal closed, it crashed, its app quit): its request cleared
+        /// and its turn stopped. The session stays, idle, and is forgotten
+        /// like any other. Only `advance` says it.
+        case agentGone
         /// Anything else that counted: a question answered, or a
         /// subagent's own turn-level hook.
         case other
@@ -146,19 +176,29 @@ public final class SessionTracker {
     public static let noticeFirstMs: Int64 = 1000
     /// The largest request number, so it fits in 32 bits.
     public static let maxRequest = Int(Int32.max)
+    /// How often, at most, `advance` checks that the agents of silent
+    /// sessions that wait or work still run, and how long a session is
+    /// silent before it's checked.
+    public static let liveCheckMs: Int64 = 5000
 
     public private(set) var sessions: [String: Session] = [:]
     var fold = SessionFold()
     public private(set) var lastRequest: Int
     var callOrder = 0
+    /// When `advance` last checked the agents' processes.
+    var lastLiveCheck: Int64?
     let place: (String) -> Place
+    let isRunning: (AgentProcess) -> Bool
 
     /// `firstRequest` is where request numbers start: the first request
     /// shown gets the one after it. `place` names a working directory's
-    /// project (`Places` caches it).
-    public init(firstRequest: Int = 0, place: @escaping (String) -> Place = { Place.at(cwd: $0) }) {
+    /// project (`Places` caches it). `isRunning` says whether an agent's
+    /// process still runs.
+    public init(firstRequest: Int = 0, place: @escaping (String) -> Place = { Place.at(cwd: $0) },
+                isRunning: @escaping (AgentProcess) -> Bool = AgentProcess.isRunning) {
         lastRequest = firstRequest
         self.place = place
+        self.isRunning = isRunning
     }
 
     // MARK: - Inputs
@@ -184,28 +224,58 @@ public final class SessionTracker {
         return change
     }
 
-    /// Runs every timer due by `now`: a Codex request past its grace shows,
-    /// a session silent 10 minutes stops waiting and working, and one
-    /// silent a day is forgotten. `sparing`'s Codex request isn't shown:
-    /// its event comes first. Returns what the timers did that the table
-    /// can't show, by session key: each request that expired.
+    /// Runs every timer due by `now`: a Codex request past its grace shows;
+    /// every 5 s, a session silent that long that waits or works, and
+    /// whose agent's process has ended, stops: its request clears and its
+    /// turn ends; a session with no process to check that's silent 10
+    /// minutes stops waiting and working; and a session silent a day is
+    /// forgotten, unless its agent's process keeps it waiting or working.
+    /// A process is checked as it is when this runs, whatever `now` says.
+    /// `sparing` is left to its event, which comes next: its Codex request
+    /// isn't shown, nor its process checked. Returns what the timers did
+    /// that the table can't show, by session key: each request that
+    /// expired, and each session whose agent is gone.
     @discardableResult
     public func advance(to now: Int64, sparing: String? = nil) -> [String: Change] {
         var changes: [String: Change] = [:]
-        for (key, var s) in sessions where s.pendingSince != nil || now - s.lastEventAt >= SessionFold.safetyNetMs {
-            let silent = now - s.lastEventAt >= SessionFold.safetyNetMs
+        if lastLiveCheck.map({ now - $0 >= Self.liveCheckMs }) ?? true {
+            lastLiveCheck = now
+            // An idle session's process isn't checked: one process can
+            // outlive many sessions (an app's one server, a new thread in a
+            // running CLI), and one can end with each turn.
+            for (key, var s) in sessions
+            where key != sparing && now - s.lastEventAt >= Self.liveCheckMs && (s.working || waits(s)) {
+                guard let process = s.process, !isRunning(process) else { continue }
+                if waits(s) { clearRequest(&s, now) }
+                s.working = false
+                s.turn.endTurn(at: now)
+                clearWork(&s)
+                sessions[key] = s
+                changes[key] = .agentGone
+            }
+        }
+        // A session whose process runs waits as long as its agent does, so
+        // only a Codex request in its grace, a session with no process
+        // silent 10 minutes, or one silent a day has a timer due.
+        for (key, var s) in sessions
+        where s.pendingSince != nil || (s.process == nil && now - s.lastEventAt >= SessionFold.safetyNetMs)
+            || SessionFold.forgotten(s.lastEventAt, at: now) {
+            let silent = s.process == nil && now - s.lastEventAt >= SessionFold.safetyNetMs
             if !silent && key != sparing { promote(&s, now) }
             if silent && (s.needsSince != nil || s.pendingSince != nil) {
                 // Ten silent minutes, even for a Codex request no tick saw
                 // through its grace (the Mac slept): the agent is still
-                // waiting on its prompt, or gone. Either way it isn't
-                // working. Its turn, if it goes on, still counts from its
-                // start.
+                // waiting on its prompt, or gone, and with no process
+                // there's no telling which. Either way it isn't working.
+                // Its turn, if it goes on, still counts from its start.
                 if s.needsSince != nil { changes[key] = .requestExpired }
                 clearRequest(&s, now)
                 s.working = false
             }
-            if SessionFold.forgotten(s.lastEventAt, at: now) {
+            // A running process keeps a session that waits or works: a
+            // gone one stopped it at the check above.
+            let kept = s.process != nil && (s.working || waits(s))
+            if !kept && SessionFold.forgotten(s.lastEventAt, at: now) {
                 sessions[key] = nil
             } else {
                 sessions[key] = s
@@ -218,13 +288,14 @@ public final class SessionTracker {
     // MARK: - Reading
 
     /// Whether the session works at `now`: working, and heard from within
-    /// the hour.
+    /// the hour or with its agent's process to check, which stops it when
+    /// the process ends.
     public func isWorking(_ s: Session, at now: Int64) -> Bool {
-        s.working && now - s.lastEventAt < SessionFold.staleWorkMs
+        s.working && (s.process != nil || now - s.lastEventAt < SessionFold.staleWorkMs)
     }
 
-    /// Whether any session needs you.
-    public var needsYou: Bool { sessions.values.contains { $0.needsSince != nil } }
+    /// Whether a request waits on the session, shown or in its grace.
+    func waits(_ s: Session) -> Bool { s.needsSince != nil || s.pendingSince != nil }
 
     /// The sessions in the order to list them: those that need you (oldest
     /// first), then working, then idle, each in the order first seen.
@@ -256,7 +327,7 @@ public final class SessionTracker {
         let place = event.cwd.map(self.place)
         var s = sessions[key] ?? Session(agent: event.agent, id: event.session, project: place?.project ?? "unknown",
                                          lastEventAt: now, order: fold.takeOrder())
-        let waiting = s.needsSince != nil || s.pendingSince != nil
+        let waiting = waits(s)
         if s.turn.isStaleNotice(event, step) { return nil }
         // A session is where its events come from, except while a request
         // waits: it's named where that was made, whatever folder a sibling
@@ -270,6 +341,8 @@ public final class SessionTracker {
         if let appSession = event.appSession { s.appSession = appSession }
         if let terminal = event.terminal { s.terminal = terminal }
         if let mode = event.mode { s.mode = mode }
+        if let process = event.process { s.process = process }
+        updateTodos(&s, event)
 
         if step == .needsYou {
             // A request's own hook (`PermissionRequest`, `Elicitation`) says
@@ -396,6 +469,11 @@ public final class SessionTracker {
             s.working = true
             s.turn.prompted(at: now)
             clearWork(&s)
+            // A list all done is over: a later turn doesn't show it.
+            if let todos = s.todos, todos.done >= todos.total {
+                s.todos = nil
+                s.tasks = [:]
+            }
             change = .turnStarted
         case .activity:
             // A result that landed late leaves the turn over.
@@ -513,6 +591,29 @@ public final class SessionTracker {
     func helperStarted(_ s: inout Session, _ id: String) {
         s.helpers.insert(id)
         for key in s.calls.keys { s.calls[key]?.sawSubagent = true }
+    }
+
+    /// A tool call's word on the agent's to-do list. The main agent's
+    /// whole list replaces it (a subagent's is its own). A task is kept by
+    /// its ID, whoever changes it, and deleted, it's gone. A task created
+    /// when every task on the list is completed starts a new list: the old
+    /// one is done.
+    func updateTodos(_ s: inout Session, _ event: AgentEvent) {
+        if let total = event.todosTotal {
+            guard event.subagent == nil else { return }
+            s.tasks = [:]
+            s.todos = total > 0 ? Todos(done: min(event.todosDone ?? 0, total), total: total) : nil
+            return
+        }
+        guard let id = event.todoID else { return }
+        if event.tool == "TaskCreate", s.tasks.values.allSatisfy({ $0 == "completed" }) { s.tasks = [:] }
+        if event.todoStatus == "deleted" {
+            s.tasks[id] = nil
+        } else {
+            s.tasks[id] = event.todoStatus ?? s.tasks[id] ?? "pending"
+        }
+        let done = s.tasks.values.filter { $0 == "completed" }.count
+        s.todos = s.tasks.isEmpty ? nil : Todos(done: done, total: s.tasks.count)
     }
 
     /// A turn starting or ending: its calls and helpers are over.

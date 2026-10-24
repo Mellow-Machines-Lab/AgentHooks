@@ -94,10 +94,7 @@ public struct TerminalTab: Equatable, Codable, Sendable {
     public static func controllingTTY(levels: Int = 8) -> String? {
         var pid = getpid()
         for _ in 0..<levels {
-            var info = kinfo_proc()
-            var size = MemoryLayout<kinfo_proc>.stride
-            var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-            guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+            guard let info = AgentProcess.info(pid) else { return nil }
             let dev = info.kp_eproc.e_tdev
             if dev != -1, let name = devname(dev, S_IFCHR) {
                 let path = "/dev/" + String(cString: name)

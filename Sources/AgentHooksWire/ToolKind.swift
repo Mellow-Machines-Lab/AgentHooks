@@ -15,7 +15,7 @@ public enum ToolKind: String, Codable, Sendable, CaseIterable {
     case web
     /// Hands work to a subagent.
     case subagent
-    /// Writes or leaves a plan.
+    /// Writes or leaves a plan, or keeps the agent's to-do list.
     case planning
     /// A tool from an MCP server (`mcp__…`).
     case mcp
@@ -37,7 +37,7 @@ public enum ToolKind: String, Codable, Sendable, CaseIterable {
         .search: ["Grep", "Glob", "LS"],
         .web: ["WebFetch", "WebSearch"],
         .subagent: ["Task", "Agent"],
-        .planning: ["TodoWrite", "ExitPlanMode", "update_plan"],
+        .planning: ["TodoWrite", "TaskCreate", "TaskUpdate", "ExitPlanMode", "update_plan"],
     ]
 
     static let names: [String: ToolKind] = {

@@ -63,8 +63,10 @@ Only the hook client stands apart: it's kept tiny so it starts fast.
   own in `~/.agent-hooks/sockets/`, and the client sends to all of them.
 - **Your words stay put.** The client sends the hook's name, the
   session, the folder, the tool's name, the permission mode, which app
-  the agent runs in and which of its terminal's tabs, an edit's lines
-  added and removed (counts only), and the thread's title as that app
+  the agent runs in and which of its terminal's tabs, the agent's
+  process ID (so a request stops waiting when its agent is gone), an edit's lines
+  added and removed and the to-do list's items done and in all (counts
+  only), and the thread's title as that app
   shows it (which can sum up your prompt). Commands, output, files and transcripts never
   leave it; your prompt and the agent's last message do only if you
   install with `--keep-text`. Lines go only to sockets in
@@ -97,7 +99,10 @@ Each event says two things:
 | The session closed | `SessionEnd` | `SessionEnd` | `session` `end` |
 
 The library's `SessionTracker` follows the events and keeps each session
-**working**, **idle** or **needs you**, with its turn. [ARCHITECTURE.md](ARCHITECTURE.md)
+**working**, **idle** or **needs you**, with its turn and its to-do list.
+A session needs you for as long as its agent waits; when the agent's
+process ends, its request clears and it stops working, and the session
+stays, idle. [ARCHITECTURE.md](ARCHITECTURE.md)
 lists every field an event carries.
 
 ## One event, start to finish
@@ -119,8 +124,8 @@ Claude wants to run your tests and asks your permission.
 ```
 
 **2. The client keeps a few facts** and sends them to every listening app.
-The command is gone; the app the agent runs in, and where in its
-terminal, are added:
+The command is gone; the app the agent runs in, where in its terminal,
+and the agent's process are added:
 
 ```json
 {
@@ -129,6 +134,8 @@ terminal, are added:
   "cwd": "/Users/you/src/landing",
   "hook": "PermissionRequest",
   "mode": "default",
+  "pid": 17881,
+  "pid_start": 1791706851309,
   "session": "s1",
   "terminal": {"program": "ghostty", "tty": "/dev/ttys003"},
   "tool": "Bash",
@@ -152,6 +159,7 @@ terminal, are added:
   "app": "com.mitchellh.ghostty",
   "terminal": {"program": "ghostty", "tty": "/dev/ttys003"},
   "mode": "default",
+  "process": {"pid": 17881, "started": 1791706851309},
   "at": 1791707031722
 }
 ```
@@ -160,7 +168,7 @@ terminal, are added:
 event above, then the session's new state, each as one line:
 
 ```json
-{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707031722,"cwd":"/Users/you/src/landing","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash"}
+{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707031722,"cwd":"/Users/you/src/landing","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","process":{"pid":17881,"started":1791706851309},"session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash"}
 {"asking":"permission","at":1791707031722,"project":"landing","session":"claude/s1","state":"needs_you"}
 ```
 

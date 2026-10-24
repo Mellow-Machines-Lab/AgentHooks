@@ -42,12 +42,16 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     public var name: String?
     /// The app the agent runs in, by bundle ID (`HostApp`).
     public var app: String?
-    /// The Claude app's own ID for the session (`local_…`).
+    /// The Claude app's own ID for the session: `local_…`, or by Remote
+    /// Control the remote session's `session_…`.
     public var appSession: String?
     /// Where in a terminal the agent runs (`TerminalTab`): its tab.
     public var terminal: TerminalTab?
     /// The agent's permission mode: Claude's `default`, `plan`, `acceptEdits`…
     public var mode: String?
+    /// The agent's process (`AgentProcess`), so a session can be told
+    /// apart from one whose agent is gone.
+    public var process: AgentProcess?
 
     // By kind and phase.
     /// A session start's source: `startup`, `resume`, `clear` or `compact`
@@ -80,13 +84,22 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     public var outcome: Outcome?
     /// A done turn's last message, with `--keep-text`.
     public var message: String?
+    /// On a `tool` end, a task the agent created or updated: its ID, and
+    /// its status (`pending`, `in_progress`, `completed` or `deleted`).
+    public var todoID: String?
+    public var todoStatus: String?
+    /// On a `tool` start, the agent's whole to-do list: how many items are
+    /// completed, of how many.
+    public var todosDone: Int?
+    public var todosTotal: Int?
 
     public init(agent: Agent, kind: Kind, phase: Phase, hook: String, session: String, at: Int64,
                 subagent: String? = nil, subagentType: String? = nil, cwd: String? = nil, name: String? = nil,
                 app: String? = nil, appSession: String? = nil, terminal: TerminalTab? = nil, mode: String? = nil,
                 source: String? = nil, prompt: String? = nil, tool: String? = nil, toolUseID: String? = nil,
                 topic: String? = nil, linesAdded: Int? = nil, linesRemoved: Int? = nil, failed: Bool? = nil, error: String? = nil, asking: Asking? = nil, notice: String? = nil,
-                outcome: Outcome? = nil, message: String? = nil) {
+                outcome: Outcome? = nil, message: String? = nil, process: AgentProcess? = nil, todoID: String? = nil,
+                todoStatus: String? = nil, todosDone: Int? = nil, todosTotal: Int? = nil) {
         self.agent = agent
         self.kind = kind
         self.phase = phase
@@ -114,15 +127,21 @@ public struct AgentEvent: Equatable, Codable, Sendable {
         self.notice = notice
         self.outcome = outcome
         self.message = message
+        self.process = process
+        self.todoID = todoID
+        self.todoStatus = todoStatus
+        self.todosDone = todosDone
+        self.todosTotal = todosTotal
     }
 
     /// Its JSON keys, snake_case both ways, so an event an app wrote reads
     /// back as it was.
     enum CodingKeys: String, CodingKey {
         case agent, kind, phase, hook, session, at, subagent, cwd, name, app, terminal, mode, source, prompt, tool, topic,
-             failed, error, asking, notice, outcome, message
+             failed, error, asking, notice, outcome, message, process
         case subagentType = "subagent_type", appSession = "app_session", toolUseID = "tool_use_id",
-             linesAdded = "lines_added", linesRemoved = "lines_removed"
+             linesAdded = "lines_added", linesRemoved = "lines_removed", todoID = "todo_id", todoStatus = "todo_status",
+             todosDone = "todos_done", todosTotal = "todos_total"
     }
 
     /// The session's key across agents: `claude/s1`.
