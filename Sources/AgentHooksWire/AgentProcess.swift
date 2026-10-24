@@ -14,27 +14,61 @@ public struct AgentProcess: Equatable, Codable, Sendable {
         self.started = started
     }
 
-    /// What the process asks `sh -c` or `env` to run is never the agent.
-    static let launchers: Set<String> = ["sh", "bash", "zsh", "dash", "fish", "ksh", "tcsh", "csh", "env"]
+    /// Shells, and wrappers that run a command for someone: what they run
+    /// is never the agent, which is above them. Claude Code itself is
+    /// `node`, `claude`, or from its own installer its version
+    /// (`2.1.304`), never one of these.
+    static let launchers: Set<String> = [
+        "sh", "bash", "zsh", "dash", "fish", "ksh", "tcsh", "csh",
+        "env", "nice", "nohup", "timeout", "caffeinate", "script", "sudo",
+    ]
 
     /// The agent that runs this hook, walking up from the hook's parent at
     /// most `levels`: Claude's `CLAUDE_PID` when it's one of those, else
     /// the first that isn't a shell or a launcher. Nil when none is found.
     public static func find(agent: String, env: [String: String], levels: Int = 8) -> AgentProcess? {
+        find(agent: agent, env: env, from: getppid(), levels: levels, lookup: ancestor)
+    }
+
+    /// One process `find` walks past: its program's name, its parent, and
+    /// when it started.
+    struct Ancestor {
+        var name: String
+        var parent: Int32
+        var started: Int64
+    }
+
+    /// `find` from `pid` up, each process as `lookup` says: the system's,
+    /// or a test's made-up tree.
+    static func find(agent: String, env: [String: String], from pid: Int32, levels: Int,
+                     lookup: (Int32) -> Ancestor?) -> AgentProcess? {
         let claudePID = agent == "claude" ? env["CLAUDE_PID"].flatMap { Int32($0) }.flatMap { $0 > 1 ? $0 : nil } : nil
-        var pid = getppid()
+        var pid = pid
         var first: AgentProcess?
         for _ in 0..<levels where pid > 1 {
-            guard let info = info(pid) else { break }
-            let process = AgentProcess(pid: pid, started: startTime(info))
+            guard let up = lookup(pid) else { break }
+            let process = AgentProcess(pid: pid, started: up.started)
             if pid == claudePID { return process }
-            if first == nil, !launchers.contains(name(info)) {
+            if first == nil, !launchers.contains(up.name) {
                 first = process
                 if claudePID == nil { break }
             }
-            pid = info.kp_eproc.e_ppid
+            pid = up.parent
         }
         return first
+    }
+
+    /// The process `pid` as `find` walks past it, from `sysctl`.
+    static func ancestor(_ pid: Int32) -> Ancestor? {
+        info(pid).map { Ancestor(name: name($0), parent: $0.kp_eproc.e_ppid, started: startTime($0)) }
+    }
+
+    /// The program it runs (`p_comm`), while it runs, so a process taken
+    /// for the agent shows what it is; nil once it has ended, or when the
+    /// system won't say.
+    public func program() -> String? {
+        guard let info = Self.info(pid), Self.startTime(info) == started else { return nil }
+        return Self.name(info)
     }
 
     /// Whether the process still runs: a process with its pid that started

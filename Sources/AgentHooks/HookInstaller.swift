@@ -158,7 +158,10 @@ public struct HookInstaller {
         if let config { try config.write(to: codexConfigURL.resolvingSymlinksInPath(), atomically: true, encoding: .utf8) }
     }
 
-    /// Removes its entries, current and old, and nothing else.
+    /// Removes its entries, current and old, and nothing else. They're
+    /// every app's: an app uninstalling itself removes them only once no
+    /// other app is listed (`HookSocket.listed`), or the others go deaf,
+    /// since `repair` adds nothing for an agent that has none.
     public func remove(_ agent: Agent) throws {
         let root = try read(agent).get()
         try write(removing(from: root), agent)

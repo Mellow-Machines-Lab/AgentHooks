@@ -44,7 +44,46 @@ import Testing
             #expect(AgentProcess.find(agent: "codex", env: ["CLAUDE_PID": "\(last.pid)"]) == expected, "Claude's alone")
         }
         #expect(AgentProcess.find(agent: "codex", env: [:], levels: 0) == nil)
-        #expect(AgentProcess.launchers == ["sh", "bash", "zsh", "dash", "fish", "ksh", "tcsh", "csh", "env"])
+    }
+
+    /// Up a made-up tree: past the shells and the wrappers that run a
+    /// command for someone, to the agent. Claude Code, as `node` or as
+    /// its installer's version, is the agent, never a launcher;
+    /// `CLAUDE_PID` wins when it's one of them.
+    @Test func theAgentIsFoundPastShellsAndWrappers() {
+        // Each pid's program and parent; each started at its pid.
+        let tree: [Int32: (name: String, parent: Int32)] = [
+            10: ("sh", 11), 11: ("timeout", 12), 12: ("caffeinate", 13), 13: ("node", 14), 14: ("nice", 15),
+            15: ("zsh", 16), 16: ("login", 1),
+            20: ("bash", 21), 21: ("sudo", 22), 22: ("nohup", 23), 23: ("script", 24), 24: ("env", 25),
+            25: ("2.1.304", 26), 26: ("zsh", 1),
+        ]
+        func find(_ agent: String, from pid: Int32, env: [String: String] = [:], levels: Int = 8) -> Int32? {
+            AgentProcess.find(agent: agent, env: env, from: pid, levels: levels) { pid in
+                tree[pid].map { AgentProcess.Ancestor(name: $0.name, parent: $0.parent, started: Int64(pid)) }
+            }?.pid
+        }
+        #expect(find("claude", from: 10) == 13, "node is Claude Code")
+        #expect(find("codex", from: 20) == 25)
+        #expect(find("claude", from: 10, env: ["CLAUDE_PID": "16"]) == 16, "CLAUDE_PID, a parent")
+        #expect(find("claude", from: 10, env: ["CLAUDE_PID": "99"]) == 13, "not a parent: ignored")
+        #expect(find("codex", from: 10, env: ["CLAUDE_PID": "16"]) == 13, "Claude's alone")
+        #expect(find("codex", from: 99) == nil, "no such process")
+        #expect(find("codex", from: 20, levels: 3) == nil, "past the levels")
+        #expect(AgentProcess.launchers == ["sh", "bash", "zsh", "dash", "fish", "ksh", "tcsh", "csh",
+                                          "env", "nice", "nohup", "timeout", "caffeinate", "script", "sudo"])
+        #expect(!AgentProcess.launchers.contains("node") && !AgentProcess.launchers.contains("claude"))
+    }
+
+    /// A process names its program while it runs, so a wrong one taken
+    /// for the agent shows (`agent-hooks tail --sessions`).
+    @Test func aRunningProcessNamesItsProgram() throws {
+        let me = try process(getpid())
+        let info = try #require(AgentProcess.info(getpid()))
+        #expect(me.program() == AgentProcess.name(info))
+        #expect(me.program()?.isEmpty == false)
+        #expect(AgentProcess(pid: me.pid, started: me.started + 1).program() == nil, "its pid, reused")
+        #expect(AgentProcess(pid: 99_999_999, started: me.started).program() == nil, "no such process")
     }
 
     /// It rides every line, to the event and its session.
@@ -117,17 +156,23 @@ import Testing
         return out
     }
 
-    @Test func aRequestWaitsAsLongAsItsAgentRuns() {
+    /// Up to a silent day, when any session is forgotten: the table is
+    /// what a day of events rebuilds.
+    @Test func aRequestWaitsAsLongAsItsAgentRunsUpToADay() {
         send(.turn, .start, "UserPromptSubmit")
         send(.tool, .wait, "PermissionRequest") { $0.tool = "Bash" }
+        let asked = now
         let request = tracker.sessions["claude/s1"]?.request
         #expect(tick(for: 2 * 60 * 60 * 1000, every: 5000).isEmpty, "two hours at lunch")
         #expect(state() == "needs_you")
         #expect(tracker.sessions["claude/s1"]?.request == request, "the same request")
         #expect(processes.checks > 0)
-        now += SessionFold.forgetMs
+        now = asked + SessionFold.forgetMs - 1
         tracker.advance(to: now)
-        #expect(state() == "needs_you", "a day, and its agent still waits")
+        #expect(state() == "needs_you", "a day less a moment, and its agent still waits")
+        now += 1
+        #expect(tracker.advance(to: now).isEmpty)
+        #expect(state() == "gone", "a silent day: forgotten, as a launch that reads a day back would have it")
     }
 
     /// The agent gone while a request waits: the request clears and the
@@ -166,11 +211,23 @@ import Testing
         #expect(tick(for: 60_000).isEmpty, "once")
     }
 
-    /// A running process keeps a turn working past the hour that makes a
-    /// silent one stale.
-    @Test func aTurnWorksAsLongAsItsAgentRuns() {
+    /// A turn silent an hour isn't working, even while its agent's
+    /// process runs: its `Stop` was lost, or an interrupt sent none. Its
+    /// process isn't checked after that, and its next event works again.
+    @Test func aTurnSilentAnHourIsIdleWhateverItsProcess() {
         send(.turn, .start, "UserPromptSubmit")
-        #expect(tick(for: 2 * SessionFold.staleWorkMs, every: 5000).isEmpty)
+        let started = now
+        #expect(tick(for: SessionFold.staleWorkMs - 5000, every: 5000).isEmpty)
+        #expect(state() == "working", "its agent runs")
+        now = started + SessionFold.staleWorkMs
+        #expect(tracker.advance(to: now).isEmpty)
+        #expect(state() == "idle", "an hour silent")
+        processes.alive = []
+        let checks = processes.checks
+        #expect(tick(for: 60_000).isEmpty, "an idle session's process isn't checked")
+        #expect(processes.checks == checks)
+        processes.alive = [7]
+        send(.tool, .start, "PreToolUse") { $0.tool = "Bash" }
         #expect(state() == "working")
         #expect(SessionFold.staleWorkMs == 3_600_000)
     }

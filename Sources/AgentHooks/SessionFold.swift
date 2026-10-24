@@ -42,10 +42,18 @@ public struct SessionFold: Sendable {
     }
 
     /// A working session with no events for this long counts as idle,
-    /// when it has no process to check.
+    /// even while its agent's process runs. A turn sends a hook at every
+    /// tool call, and no call runs anywhere near this long in silence
+    /// (Claude's commands time out at 10 minutes), so only a `Stop` that
+    /// never arrived, or an interrupt that sent none, leaves a session
+    /// working this long: a working look and its check-ins end, though
+    /// the agent sits at its prompt. Only waiting lasts as long as the
+    /// agent does.
     public static let staleWorkMs: Int64 = 60 * 60 * 1000
-    /// A session with no events for this long is forgotten, unless its
-    /// agent's process keeps it waiting or working.
+    /// A session with no events for this long is forgotten, whatever it
+    /// does, a request waiting included: so the table is what the last
+    /// day of events rebuilds, as an app that reads a day back at launch
+    /// does.
     public static let forgetMs: Int64 = 24 * 60 * 60 * 1000
     /// "Needs you" clears anyway after this long with no events, and the
     /// session goes idle, when it has no process to check.

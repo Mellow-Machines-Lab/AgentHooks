@@ -63,9 +63,9 @@ public final class SessionTracker {
         public internal(set) var mode: String?
         /// The agent's process, the last an event brought. It matters only
         /// while the session waits or works: while it runs, a request waits
-        /// and a turn works however long they're silent; when it ends, the
-        /// request clears and the work stops, and the session stays, idle.
-        /// Nil from an older hook client.
+        /// however long it's silent, up to a day; when it ends, the request
+        /// clears and the work stops, and the session stays, idle. Nil from
+        /// an older hook client.
         public internal(set) var process: AgentProcess?
         /// The agent's to-do list, as its last word on it said; nil before
         /// any, once it's empty, or once a prompt finds it all done. It
@@ -229,8 +229,9 @@ public final class SessionTracker {
     /// whose agent's process has ended, stops: its request clears and its
     /// turn ends; a session with no process to check that's silent 10
     /// minutes stops waiting and working; and a session silent a day is
-    /// forgotten, unless its agent's process keeps it waiting or working.
-    /// A process is checked as it is when this runs, whatever `now` says.
+    /// forgotten, whatever it does, so the table is what a day of events
+    /// rebuilds. A process is checked as it is when this runs, whatever
+    /// `now` says.
     /// `sparing` is left to its event, which comes next: its Codex request
     /// isn't shown, nor its process checked. Returns what the timers did
     /// that the table can't show, by session key: each request that
@@ -244,7 +245,7 @@ public final class SessionTracker {
             // outlive many sessions (an app's one server, a new thread in a
             // running CLI), and one can end with each turn.
             for (key, var s) in sessions
-            where key != sparing && now - s.lastEventAt >= Self.liveCheckMs && (s.working || waits(s)) {
+            where key != sparing && now - s.lastEventAt >= Self.liveCheckMs && (waits(s) || isWorking(s, at: now)) {
                 guard let process = s.process, !isRunning(process) else { continue }
                 if waits(s) { clearRequest(&s, now) }
                 s.working = false
@@ -254,9 +255,10 @@ public final class SessionTracker {
                 changes[key] = .agentGone
             }
         }
-        // A session whose process runs waits as long as its agent does, so
-        // only a Codex request in its grace, a session with no process
-        // silent 10 minutes, or one silent a day has a timer due.
+        // A session whose process runs waits as long as its agent does, up
+        // to a silent day, so only a Codex request in its grace, a session
+        // with no process silent 10 minutes, or one silent a day has a
+        // timer due.
         for (key, var s) in sessions
         where s.pendingSince != nil || (s.process == nil && now - s.lastEventAt >= SessionFold.safetyNetMs)
             || SessionFold.forgotten(s.lastEventAt, at: now) {
@@ -272,14 +274,7 @@ public final class SessionTracker {
                 clearRequest(&s, now)
                 s.working = false
             }
-            // A running process keeps a session that waits or works: a
-            // gone one stopped it at the check above.
-            let kept = s.process != nil && (s.working || waits(s))
-            if !kept && SessionFold.forgotten(s.lastEventAt, at: now) {
-                sessions[key] = nil
-            } else {
-                sessions[key] = s
-            }
+            sessions[key] = SessionFold.forgotten(s.lastEventAt, at: now) ? nil : s
         }
         fold.forgetEnds(at: now)
         return changes
@@ -288,10 +283,9 @@ public final class SessionTracker {
     // MARK: - Reading
 
     /// Whether the session works at `now`: working, and heard from within
-    /// the hour or with its agent's process to check, which stops it when
-    /// the process ends.
+    /// the hour, whatever its process (`SessionFold.staleWorkMs`).
     public func isWorking(_ s: Session, at now: Int64) -> Bool {
-        s.working && (s.process != nil || now - s.lastEventAt < SessionFold.staleWorkMs)
+        s.working && now - s.lastEventAt < SessionFold.staleWorkMs
     }
 
     /// Whether a request waits on the session, shown or in its grace.

@@ -45,6 +45,23 @@ public enum HookSocket {
         try fm.createSymbolicLink(atPath: link, withDestinationPath: path)
     }
 
+    /// The apps listed in `directory`, by the names they listed themselves
+    /// as (`register`), in name order: each `*.sock` there that's a link,
+    /// which stays while its app is closed, or a socket something listens
+    /// at now (`agent-hooks tail`'s). A socket left behind with nobody
+    /// listening isn't an app. The hooks' entries are every app's, so an
+    /// app that uninstalls itself takes its own listing out first, and the
+    /// entries only if no other app is listed.
+    public static func listed(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
+        let dir = directory(environment: environment)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        return names.filter { $0.hasSuffix(".sock") }.sorted().filter { name in
+            let path = dir + "/" + name
+            // Sending nothing just connects.
+            return (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) != nil || send(Data(), to: path)
+        }.map { String($0.dropLast(".sock".count)) }
+    }
+
     /// Whether the client may send to the sockets in `dir`: a real folder,
     /// not a link, owned by this user and writable by nobody else.
     public static func isPrivate(_ dir: String) -> Bool {

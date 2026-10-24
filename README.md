@@ -100,9 +100,10 @@ Each event says two things:
 
 The library's `SessionTracker` follows the events and keeps each session
 **working**, **idle** or **needs you**, with its turn and its to-do list.
-A session needs you for as long as its agent waits; when the agent's
-process ends, its request clears and it stops working, and the session
-stays, idle. [ARCHITECTURE.md](ARCHITECTURE.md)
+A session needs you for as long as its agent waits, up to a silent day;
+when the agent's process ends, its request clears and it stops working,
+and the session stays, idle. A turn silent an hour isn't working, since
+its end may have been lost. [ARCHITECTURE.md](ARCHITECTURE.md)
 lists every field an event carries.
 
 ## One event, start to finish

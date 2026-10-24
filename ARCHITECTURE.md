@@ -65,6 +65,15 @@ hooks may rely on it. And a JSON file that held only its entries is
 left as an empty `{}` rather than deleted. After any of these, restart
 open agent sessions: they read their hooks at startup.
 
+**The entries are every app's.** One client serves every app listening
+(§3), so an app that uninstalls itself takes its own listing out of
+the sockets folder first, and removes the entries only when
+`HookSocket.listed` names no other app: an app listed by its link,
+which stays while it's closed, or a socket something listens at now.
+Removing them under another app would deafen it, and its repair would
+never add them back, since repair doesn't install for an agent with
+none.
+
 ## 2. The hook client
 
 Each time a hook fires, the agent runs `agent-hook claude` (or `codex`)
@@ -140,11 +149,16 @@ So an app can tell an agent waiting on you, or working, from one
 that's gone (its terminal closed, it crashed, its app quit) without a
 `SessionEnd`, the client finds the agent's process (`AgentProcess`): it
 walks up from its parent, at most 8 up, to Claude Code's `CLAUDE_PID`
-when that's one of them, else to the first that isn't a shell or a
-launcher (`sh`, `bash`,
-`zsh`, `dash`, `fish`, `ksh`, `tcsh`, `csh`, `env`). It sends the pid
-and the process's start time (`sysctl`'s `p_starttime`), since a pid is
-reused once its process ends.
+when that's one of them, else to the first that isn't a shell (`sh`,
+`bash`, `zsh`, `dash`, `fish`, `ksh`, `tcsh`, `csh`) or a wrapper that
+runs a command for someone (`env`, `nice`, `nohup`, `timeout`,
+`caffeinate`, `script`, `sudo`). Claude Code itself is `node`, `claude`,
+or from its own installer its version (`2.1.304`), never one of those.
+It sends the pid and the process's start time (`sysctl`'s
+`p_starttime`), since a pid is reused once its process ends.
+`agent-hooks tail --sessions` shows each session's `pid` and, while it
+runs, its program (`process`), so a process taken for the agent that
+isn't one shows.
 
 ### Remote Control
 
@@ -299,9 +313,9 @@ session needs you:
 
 ```json
 {"agent":"claude","app":"com.mitchellh.ghostty","at":1791707045939,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PreToolUse","kind":"tool","mode":"default","phase":"start","process":{"pid":17881,"started":1791706851309},"session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash","tool_use_id":"toolu_1","topic":"tests"}
-{"at":1791707045939,"project":"landing","session":"claude/s1","state":"working","workspace":"fix-nav"}
+{"at":1791707045939,"pid":17881,"process":"2.1.304","project":"landing","session":"claude/s1","state":"working","workspace":"fix-nav"}
 {"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707046252,"cwd":"/Users/you/src/landing/.worktrees/fix-nav","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","process":{"pid":17881,"started":1791706851309},"session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash"}
-{"asking":"permission","at":1791707046252,"project":"landing","session":"claude/s1","state":"needs_you","workspace":"fix-nav"}
+{"asking":"permission","at":1791707046252,"pid":17881,"process":"2.1.304","project":"landing","session":"claude/s1","state":"needs_you","workspace":"fix-nav"}
 ```
 
 ### Why "needs you" is the hard part
@@ -326,17 +340,24 @@ It has to be right every time, and the hooks don't make that easy:
   stays, idle. The tracker says so (`agentGone`), so an app can tell
   that from an answer, and `agent-hooks tail --sessions` marks the
   session's `idle` line `"agent_gone":true`. While the process runs, a
-  request waits, and a turn works, however long it's silent. A Mac that
+  request waits however long it's silent, up to a day. A Mac that
   slept needs nothing special: the next check sees.
+- **A turn's end can be lost.** The client gives each app 50 ms and
+  never retries, and an interrupt may send no hook at all. So a turn
+  silent an hour isn't working, whatever its process: a turn sends a
+  hook at every tool call, and no call runs that long in silence
+  (Claude's commands time out at 10 minutes). Only waiting lasts as
+  long as the agent does.
 
-An idle session's process isn't checked, and doesn't keep it: one
-process can outlive many sessions (the Codex app's one server, a new
-thread in a running CLI), and one may end with each turn. Any idle
-session is forgotten after a silent day. A session with no process to
-check (from an older hook client) stops needing you after 10 silent
-minutes, whatever happened; the tracker says so (the request expired),
-and `agent-hooks tail --sessions` marks that line `"expired":true`. Such
-a session silent for an hour isn't working.
+An idle session's process isn't checked: one process can outlive many
+sessions (the Codex app's one server, a new thread in a running CLI),
+and one may end with each turn. Any session is forgotten after a
+silent day, one waiting on you included, so the table is what the last
+day of events rebuilds, as an app that reads a day back at launch
+does. A session with no process to check (from an older hook client)
+stops needing you after 10 silent minutes, whatever happened; the
+tracker says so (the request expired), and `agent-hooks tail
+--sessions` marks that line `"expired":true`.
 
 ## The command line
 
@@ -477,7 +498,8 @@ The library has a few more pieces for apps:
   runs past the 2 s grace shows "needs you" when nobody was asked.
 - **Apps share one set of entries.** Apps that install hooks must agree
   on the client's path and on `--keep-text`, or each one's repair undoes
-  the other's.
+  the other's, and an app that uninstalls itself leaves them while
+  another is listed (§1).
 - **Tested against** Claude Code 2.1.263 and Codex CLI 0.153.4
   ([the fixtures](Tests/AgentHooksTests/Fixtures/VERSIONS.md)). macOS
   only.

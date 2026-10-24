@@ -17,7 +17,8 @@ let usage = """
         Each agent's hooks, and the apps listening.
     agent-hooks tail [--sessions] [--name NAME]
         Listens as NAME (default tail-PID) and prints every event as a JSON line; with --sessions, also
-        each session's state as it changes (working, idle, needs_you, gone), with "expired" when a
+        each session's state as it changes (working, idle, needs_you, gone), with the pid of the process
+        taken for its agent and, while that runs, its program ("process"), with "expired" when a
         request nobody answered stopped showing after 10 silent minutes (only for an agent whose process
         can't be checked), and "agent_gone" when a session stopped waiting or working because its agent's
         process ended.
@@ -252,6 +253,10 @@ final class Tail: @unchecked Sendable {
             var line: [String: Any] = ["session": key, "state": state, "project": s.project, "at": time]
             line["workspace"] = s.workspace
             line["name"] = s.name
+            // The process taken for the agent, by its program while it
+            // runs, so a wrong one shows.
+            line["pid"] = s.process?.pid
+            line["process"] = s.process?.program()
             if state == "needs_you" { line["asking"] = (s.asking ?? .permission).rawValue }
             if timers[key] == .requestExpired { line["expired"] = true }
             if timers[key] == .agentGone { line["agent_gone"] = true }
