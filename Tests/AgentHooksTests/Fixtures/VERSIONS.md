@@ -15,7 +15,11 @@ Raw hook payloads, one directory per agent:
   `permission_mode`, `SubagentStart` and a resumed `SessionStart`'s
   `source` in the shape Claude's hook reference gives, not yet recorded,
   and Codex's `PostCompact` in the shape its hooks give (lifecycle
-  metadata only), not yet recorded.
+  metadata only), not yet recorded; and `edits.jsonl` for each agent, a
+  session of edits whose sizes are counted: Claude's `Edit`, `MultiEdit`
+  and `Write`, with results' `structuredPatch` in the shape Claude Code
+  gives, and Codex's `apply_patch` with its `PostToolUse` carrying
+  `tool_input`, as its hooks' reference gives, neither yet recorded.
 
 A line `{"wait_ms": N}` moves a replay's clock. `WireTests` walks every
 file and checks that only your prompt and the agent's last message reach

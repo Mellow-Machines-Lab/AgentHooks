@@ -45,6 +45,8 @@ public final class SessionTracker {
         /// last an event brought: where the thread opens (`ThreadLink`).
         public internal(set) var app: String?
         public internal(set) var appSession: String?
+        /// Where in a terminal it runs, the last an event brought.
+        public internal(set) var terminal: TerminalTab?
         /// The permission mode the last event that had one said.
         public internal(set) var mode: String?
         /// Working on a turn: not idle, and not waiting on "needs you". A
@@ -99,7 +101,9 @@ public final class SessionTracker {
         /// Claude's plan mode.
         public var planMode: Bool { mode == "plan" }
         /// Where the thread opens.
-        public var thread: ThreadRef { ThreadRef(agent: agent.rawValue, session: id, app: app, appSession: appSession) }
+        public var thread: ThreadRef {
+            ThreadRef(agent: agent.rawValue, session: id, app: app, appSession: appSession, terminal: terminal)
+        }
     }
 
     /// What an event did to its session, for an app that reacts to it.
@@ -264,6 +268,7 @@ public final class SessionTracker {
         if let name = event.name { s.name = name }
         if let app = event.app { s.app = app }
         if let appSession = event.appSession { s.appSession = appSession }
+        if let terminal = event.terminal { s.terminal = terminal }
         if let mode = event.mode { s.mode = mode }
 
         if step == .needsYou {

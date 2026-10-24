@@ -110,6 +110,8 @@ public enum Mapping {
             e.tool = line.tool
             e.toolUseID = line.toolUseID
             e.topic = line.topic
+            e.linesAdded = line.linesAdded
+            e.linesRemoved = line.linesRemoved
         case (.tool, .wait):
             e.tool = line.tool
             e.toolUseID = line.toolUseID
@@ -121,6 +123,8 @@ public enum Mapping {
             e.tool = line.tool
             e.toolUseID = line.toolUseID
             e.topic = line.topic
+            e.linesAdded = line.linesAdded
+            e.linesRemoved = line.linesRemoved
             if claude && line.tool != nil {
                 // Claude says whether a call failed; Codex doesn't.
                 let failed = line.hook == "PostToolUseFailure"
@@ -149,6 +153,7 @@ public enum Mapping {
         e.name = line.name
         e.app = line.app
         e.appSession = line.appSession
+        e.terminal = line.terminal
         return e
     }
 }

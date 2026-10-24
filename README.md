@@ -63,8 +63,9 @@ Only the hook client stands apart: it's kept tiny so it starts fast.
   own in `~/.agent-hooks/sockets/`, and the client sends to all of them.
 - **Your words stay put.** The client sends the hook's name, the
   session, the folder, the tool's name, the permission mode, which app
-  the agent runs in, and the thread's title as that app shows it (which
-  can sum up your prompt). Commands, output, files and transcripts never
+  the agent runs in and which of its terminal's tabs, an edit's lines
+  added and removed (counts only), and the thread's title as that app
+  shows it (which can sum up your prompt). Commands, output, files and transcripts never
   leave it; your prompt and the agent's last message do only if you
   install with `--keep-text`. Lines go only to sockets in
   `~/.agent-hooks/sockets/`, a folder only you can write to.
@@ -118,7 +119,8 @@ Claude wants to run your tests and asks your permission.
 ```
 
 **2. The client keeps a few facts** and sends them to every listening app.
-The command is gone; the app the agent runs in is added:
+The command is gone; the app the agent runs in, and where in its
+terminal, are added:
 
 ```json
 {
@@ -128,6 +130,7 @@ The command is gone; the app the agent runs in is added:
   "hook": "PermissionRequest",
   "mode": "default",
   "session": "s1",
+  "terminal": {"program": "ghostty", "tty": "/dev/ttys003"},
   "tool": "Bash",
   "ts": 1791707031722
 }
@@ -147,6 +150,7 @@ The command is gone; the app the agent runs in is added:
   "tool": "Bash",
   "cwd": "/Users/you/src/landing",
   "app": "com.mitchellh.ghostty",
+  "terminal": {"program": "ghostty", "tty": "/dev/ttys003"},
   "mode": "default",
   "at": 1791707031722
 }
@@ -156,7 +160,7 @@ The command is gone; the app the agent runs in is added:
 event above, then the session's new state, each as one line:
 
 ```json
-{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707031722,"cwd":"/Users/you/src/landing","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","tool":"Bash"}
+{"agent":"claude","app":"com.mitchellh.ghostty","asking":"permission","at":1791707031722,"cwd":"/Users/you/src/landing","hook":"PermissionRequest","kind":"tool","mode":"default","phase":"wait","session":"s1","terminal":{"program":"ghostty","tty":"/dev/ttys003"},"tool":"Bash"}
 {"asking":"permission","at":1791707031722,"project":"landing","session":"claude/s1","state":"needs_you"}
 ```
 

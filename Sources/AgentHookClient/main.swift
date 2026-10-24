@@ -32,7 +32,7 @@ while true {
 let environment = ProcessInfo.processInfo.environment
 if ["claude", "codex"].contains(agent),
    let line = HookLine.extract(agent: agent, payload: payload, ts: started, codexHome: ThreadName.codexHome,
-                               env: environment, keepText: keepText, topics: Topic.extraPatterns(environment: environment)) {
+                               env: environment, tty: TerminalTab.controllingTTY(), keepText: keepText, topics: Topic.extraPatterns(environment: environment)) {
     let data = line.encoded()
     for destination in HookSocket.destinations(environment: environment) {
         HookSocket.send(data, to: destination)

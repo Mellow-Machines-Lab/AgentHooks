@@ -53,6 +53,14 @@ public struct HookLine: Equatable, Sendable {
     /// The Claude app's own ID for the session (`local_…`), which its links
     /// open; nil outside the Claude app.
     public var appSession: String?
+    /// Where in a terminal the agent runs (`TerminalTab`), so its tab can be
+    /// opened; nil outside a terminal.
+    public var terminal: TerminalTab?
+    /// An edit tool call's size (`EditSize`), on `PreToolUse` (what it will
+    /// change) and `PostToolUse` (what it changed): lines added and
+    /// removed. Only the counts; the text stays in `agent-hook`.
+    public var linesAdded: Int?
+    public var linesRemoved: Int?
     /// When the hook ran, in milliseconds.
     public var ts: Int64
 
@@ -61,7 +69,7 @@ public struct HookLine: Equatable, Sendable {
                 toolError: String? = nil, toolUseID: String? = nil, agentType: String? = nil,
                 agentID: String? = nil, message: String? = nil, prompt: String? = nil, name: String? = nil,
                 source: String? = nil, mode: String? = nil, app: String? = nil, appSession: String? = nil,
-                ts: Int64) {
+                terminal: TerminalTab? = nil, linesAdded: Int? = nil, linesRemoved: Int? = nil, ts: Int64) {
         self.agent = agent
         self.hook = hook
         self.session = session
@@ -82,6 +90,9 @@ public struct HookLine: Equatable, Sendable {
         self.mode = mode
         self.app = app
         self.appSession = appSession
+        self.terminal = terminal
+        self.linesAdded = linesAdded
+        self.linesRemoved = linesRemoved
         self.ts = ts
     }
 
@@ -100,17 +111,19 @@ public struct HookLine: Equatable, Sendable {
     /// payload has no hook name or session. With `codexHome`, the line also
     /// gets the thread's name (`ThreadName`); without it, neither agent's
     /// is looked up. `env` is the hook's environment, which says what app
-    /// the agent runs in (`HostApp`). `keepText` keeps your prompt and the
+    /// the agent runs in (`HostApp`) and where in a terminal (`TerminalTab`,
+    /// with `tty`, the agent's controlling terminal). `keepText` keeps your prompt and the
     /// agent's last message; `topics` adds command patterns to the topic
     /// tags (`Topic.extraPatterns`).
     public static func extract(agent: String, payload: Data, ts: Int64, codexHome: String? = nil,
-                               env: [String: String] = [:], keepText: Bool = false,
+                               env: [String: String] = [:], tty: String? = nil, keepText: Bool = false,
                                topics: [String: [[String]]] = [:]) -> HookLine? {
         var line = (try? JSONSerialization.jsonObject(with: payload) as? [String: Any])
             .flatMap { extract(agent: agent, json: $0, ts: ts, codexHome: codexHome, keepText: keepText, topics: topics) }
             ?? salvage(agent: agent, payload: payload, ts: ts)
         line?.app = HostApp.bundleID(agent: agent, env: env)
         line?.appSession = HostApp.session(agent: agent, env: env)
+        line?.terminal = TerminalTab.from(env: env, tty: tty)
         return line
     }
 
@@ -130,6 +143,12 @@ public struct HookLine: Equatable, Sendable {
             line.toolUseID = string(json["tool_use_id"])
             if hook != "PermissionRequest" {
                 line.topic = Topic.tag(tool: line.tool, input: json["tool_input"], extra: topics)
+            }
+            if hook == "PreToolUse" || hook == "PostToolUse",
+               let size = EditSize.of(tool: line.tool, input: json["tool_input"],
+                                      response: hook == "PostToolUse" ? json["tool_response"] : nil) {
+                line.linesAdded = size.added
+                line.linesRemoved = size.removed
             }
             line.interrupt = hook == "PostToolUseFailure" && json["is_interrupt"] as? Bool == true
             if hook == "PostToolUseFailure" && !line.interrupt {
@@ -192,10 +211,31 @@ public struct HookLine: Equatable, Sendable {
         ("source", \.source), ("mode", \.mode), ("app", \.app), ("app_session", \.appSession),
     ]
 
+    /// The terminal's fields, by their names on the wire, which are its
+    /// `Codable` keys.
+    static let terminalWire: [(key: String, field: WritableKeyPath<TerminalTab, String?> & Sendable)] = [
+        ("program", \.program), ("iterm_session", \.itermSession), ("term_session", \.termSession), ("tty", \.tty),
+        ("tmux_pane", \.tmuxPane), ("tmux_socket", \.tmuxSocket),
+    ]
+
+    /// A non-negative whole number, or nil.
+    static func count(_ value: Any?) -> Int? {
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let n = number.intValue
+        return n >= 0 ? n : nil
+    }
+
     public func encoded() -> Data {
         var object: [String: Any] = ["agent": agent, "hook": hook, "session": session, "ts": ts]
         if interrupt { object["interrupt"] = true }
         for (key, field) in Self.wire { if let value = self[keyPath: field] { object[key] = value } }
+        if let linesAdded { object["lines_added"] = linesAdded }
+        if let linesRemoved { object["lines_removed"] = linesRemoved }
+        if let terminal {
+            var tab: [String: Any] = [:]
+            for (key, field) in Self.terminalWire { if let value = terminal[keyPath: field] { tab[key] = value } }
+            object["terminal"] = tab
+        }
         // No `.sortedKeys`: nothing reads the order, and sorting loads
         // locale-aware comparison, about half of a hook's few milliseconds.
         var data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
@@ -211,6 +251,13 @@ public struct HookLine: Equatable, Sendable {
                             ts: (object["ts"] as? NSNumber)?.int64Value ?? 0)
         for (key, field) in wire {
             line[keyPath: field] = string(object[key], max: key == "message" || key == "prompt" ? maxMessage : maxField)
+        }
+        line.linesAdded = count(object["lines_added"])
+        line.linesRemoved = count(object["lines_removed"])
+        if let tab = object["terminal"] as? [String: Any] {
+            var terminal = TerminalTab()
+            for (key, field) in terminalWire { terminal[keyPath: field] = string(tab[key]) }
+            line.terminal = terminal == TerminalTab() ? nil : terminal
         }
         return line
     }
