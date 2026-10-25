@@ -69,7 +69,9 @@ Only the hook client stands apart: it's kept tiny so it starts fast.
   only), and the thread's title as that app
   shows it (which can sum up your prompt). Commands, output, files and transcripts never
   leave it; your prompt and the agent's last message do only if you
-  install with `--keep-text`. Lines go only to sockets in
+  install with `--keep-text`, and a notice the agent's harness types as
+  a prompt (Claude Code's that a background command finished) never
+  does. Lines go only to sockets in
   `~/.agent-hooks/sockets/`, a folder only you can write to.
 
 ## The unified event

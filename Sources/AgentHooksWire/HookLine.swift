@@ -37,7 +37,8 @@ public struct HookLine: Equatable, Sendable {
     /// finished, up to `maxMessage` characters, with `--keep-text`.
     public var message: String?
     /// `UserPromptSubmit`'s `prompt`: what you asked, up to `maxMessage`
-    /// characters, with `--keep-text`.
+    /// characters, with `--keep-text`. Never a prompt the agent's harness
+    /// typed for you (`typedForYou`).
     public var prompt: String?
     /// The thread's name as its agent's app shows it (`ThreadName`), on
     /// every hook that finds one.
@@ -122,6 +123,15 @@ public struct HookLine: Equatable, Sendable {
     /// Longest prompt or last assistant message kept.
     public static let maxMessage = 2000
 
+    /// Whether a `UserPromptSubmit`'s prompt is a notice the agent's
+    /// harness typed for you, not something you asked: Claude Code hands
+    /// a background task's end to the agent as a prompt that opens with
+    /// `<task-notification>`, naming the command. It's dropped, as a
+    /// command would be, and the turn starts as one with no prompt.
+    public static func typedForYou(_ prompt: String) -> Bool {
+        prompt.drop { $0.isWhitespace }.hasPrefix("<task-notification>")
+    }
+
     /// The hooks that come with every tool call. They look for the thread's
     /// name only near the end of its transcript, where it almost always is,
     /// so a thread that has none doesn't cost a wide read on every call.
@@ -182,7 +192,7 @@ public struct HookLine: Equatable, Sendable {
                 line.toolError = ToolError.classify(json["error"] as? String)
             }
         case "UserPromptSubmit":
-            if keepText { line.prompt = string(json["prompt"], max: maxMessage) }
+            if keepText { line.prompt = string(json["prompt"], max: maxMessage).flatMap { typedForYou($0) ? nil : $0 } }
         case "Stop":
             if keepText { line.message = string(json["last_assistant_message"], max: maxMessage) }
         case "StopFailure":

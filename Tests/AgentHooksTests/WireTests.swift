@@ -230,6 +230,15 @@ import Testing
         ]), ts: 0, keepText: true))
         #expect(stop.message?.count == HookLine.maxMessage)
         #expect(HookLine.decode(stop.encoded()) == stop)
+        // Claude Code's notice that a background command finished comes as
+        // a prompt, but you didn't type it, and it names the command.
+        let notice = "\n<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n"
+            + "<summary>Background command \"Baseline goldens\" completed (exit code 0)</summary>\n</task-notification>"
+        let noticed = try #require(HookLine.extract(agent: "claude", payload: payload([
+            "hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": notice,
+        ]), ts: 0, keepText: true))
+        #expect(noticed.hook == "UserPromptSubmit" && noticed.prompt == nil, "the turn starts, with no prompt")
+        #expect(!HookLine.typedForYou("what does <task-notification> mean?"), "only a prompt that opens with it")
     }
 
     /// A subagent's hooks carry the parent's session plus
