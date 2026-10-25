@@ -106,8 +106,8 @@ ID, the folder the agent works in, the tool's name, the permission mode,
 the bundle ID of the app the agent runs in, its terminal tab, and the
 agent's process ID and start time. Some
 hooks add a few more, all listed under *Its fields* below: the tool
-call's ID, which subagent, a command's topic, an edit's size, the
-to-do list's counts, an error's class. The one thing you or the
+call's ID, which subagent, a command's topic and program, an edit's
+size and file type, the to-do list's counts, an error's class. The one thing you or the
 agent wrote that leaves by default is the thread's title, as its app
 shows it, and that can sum up your prompt.
 
@@ -130,6 +130,22 @@ only reads. To teach it your own command shapes, add them to
   "build": [["./build.sh"]]
 }
 ```
+
+A shell call also gets its **program**, a word from a closed list of
+about 150 developer programs (`Program`): the first command that does
+something, after `cd`, `echo`, `export` and the wrappers the topic
+skips, with the subcommand of the programs that have one (`grep`,
+`git log`, `npm i`, `loop` for a `for` loop). A program not on the list
+is `run`, so a script's name, which can say what your project is,
+never leaves; nothing after the program does. To name your own, add
+them to `~/.agent-hooks/words.json`:
+
+```json
+{"words": ["boopctl", "just"]}
+```
+
+An edit gets its **file type**, its first file's extension (`swift`,
+`md`), when it's eight letters or fewer.
 
 Edits get a **size** the same way (`EditSize`): lines added and lines
 removed, counted in memory, on `PreToolUse` (what the call will change)
@@ -276,6 +292,8 @@ form, so an app that keeps events as JSON reads them back with a plain
 | `tool` | `Bash` | On a `tool` event: the tool |
 | `tool_use_id` | `toolu_1` | On a `tool` start or end: which call |
 | `topic` | `tests` | What a command is about, without the command |
+| `program` | `git log` | On a shell call's `tool` start or end: its program, from a closed list, else `run` |
+| `file_type` | `swift` | On an edit's `tool` start or end: its first file's extension |
 | `lines_added`, `lines_removed` | `12`, `3` | On an edit's `tool` start or end: its size in lines, never its text |
 | `todo_id`, `todo_status` | `1`, `completed` | On a `tool` end: a task the agent created or updated, and its new status |
 | `todos_done`, `todos_total` | `1`, `3` | On a `tool` start: the agent's whole to-do list, as counts |

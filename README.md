@@ -65,8 +65,9 @@ Only the hook client stands apart: it's kept tiny so it starts fast.
   session, the folder, the tool's name, the permission mode, which app
   the agent runs in and which of its terminal's tabs, the agent's
   process ID (so a request stops waiting when its agent is gone), an edit's lines
-  added and removed and the to-do list's items done and in all (counts
-  only), and the thread's title as that app
+  added and removed and its file type, a command's program from a closed
+  list (`grep`, `git log`, else `run`), the to-do list's items done and in
+  all (counts only), and the thread's title as that app
   shows it (which can sum up your prompt). Commands, output, files and transcripts never
   leave it; your prompt and the agent's last message do only if you
   install with `--keep-text`, and a notice the agent's harness types as
