@@ -288,7 +288,7 @@ form, so an app that keeps events as JSON reads them back with a plain
 | `subagent` | `a1b2…` | The Claude subagent it came from; none for the main agent |
 | `subagent_type` | `Explore` | What kind of subagent |
 | `source` | `startup` | On a `session` start: `startup`, `resume`, `clear` or `compact` |
-| `prompt` | `fix the nav` | On a `turn` start: your prompt, only with `--keep-text` |
+| `prompt` | `fix the nav` | On a `turn` start: your prompt, only with `--keep-text`; never a notice the agent's harness typed for you, such as Claude Code's `<task-notification>` that a background command finished |
 | `tool` | `Bash` | On a `tool` event: the tool |
 | `tool_use_id` | `toolu_1` | On a `tool` start or end: which call |
 | `topic` | `tests` | What a command is about, without the command |
