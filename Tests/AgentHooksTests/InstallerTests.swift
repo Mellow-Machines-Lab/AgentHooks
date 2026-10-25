@@ -227,6 +227,49 @@ import Testing
         #expect((read(.claude)["model"] as? String) == "opus")
     }
 
+    /// An app's uninstall takes out its listing, then, with no other app
+    /// listed, its entries where it has some, leaving the person's own,
+    /// and the `agent-hook` they ran with its emptied folder.
+    @Test func testUninstallAloneTakesTheAppOut() throws {
+        let env = ["AGENT_HOOKS_DIR": home.appendingPathComponent(".agent-hooks").path]
+        let socket = home.appendingPathComponent("app.sock").path
+        try HookSocket.register(socket, as: "someapp", environment: env)
+        write(.claude, existing)
+        try installer.install(.claude)
+
+        let result = installer.uninstall(as: "someapp", socket: socket, environment: env)
+
+        #expect(result.removed == ["the socket's listing", "claude's hooks", "agent-hook"], "nothing for Codex, which has none")
+        #expect(result.kept == [] && result.problems == [])
+        #expect(HookSocket.listed(environment: env) == [])
+        #expect(commands(.claude, "Stop") == ["say done"], "the person's own stay")
+        #expect(installer.health(.claude) == .clientMissing)
+        #expect(!FileManager.default.fileExists(atPath: URL(fileURLWithPath: hook).deletingLastPathComponent().path))
+    }
+
+    /// The entries are every app's: while another app is listed, they and
+    /// the client stay, and only the app's own listing goes. Its own
+    /// copies, which only it knows, don't count as another app.
+    @Test func testUninstallLeavesTheEntriesToAnotherApp() throws {
+        let env = ["AGENT_HOOKS_DIR": home.appendingPathComponent(".agent-hooks").path]
+        let socket = home.appendingPathComponent("app.sock").path
+        try HookSocket.register(socket, as: "someapp", environment: env)
+        try HookSocket.register(home.appendingPathComponent("other.sock").path, as: "other", environment: env)
+        try HookSocket.register(home.appendingPathComponent("copy.sock").path, as: "someapp-copy", environment: env)
+        try installer.install(.claude)
+
+        let result = installer.uninstall(as: "someapp", socket: socket, copies: { $0.hasPrefix("someapp-") }, environment: env)
+
+        #expect(result.removed == ["the socket's listing"])
+        #expect(result.kept == ["the hooks and agent-hook, for other"])
+        #expect(installer.health(.claude) == .installed, "the other app still hears every hook")
+        #expect(HookSocket.listed(environment: env) == ["other", "someapp-copy"])
+
+        try HookSocket.unregister(home.appendingPathComponent("other.sock").path, as: "other", environment: env)
+        let again = installer.uninstall(as: "someapp", socket: socket, copies: { $0.hasPrefix("someapp-") }, environment: env)
+        #expect(again.removed == ["claude's hooks", "agent-hook"], "with only its copy left, they go")
+    }
+
     @Test func testRemovingTheOnlyHooksLeavesTheRestOfTheFile() throws {
         write(.claude, ["model": "opus"])
         try installer.install(.claude)

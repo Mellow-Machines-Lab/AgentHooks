@@ -72,7 +72,13 @@ the sockets folder first, and removes the entries only when
 which stays while it's closed, or a socket something listens at now.
 Removing them under another app would deafen it, and its repair would
 never add them back, since repair doesn't install for an agent with
-none.
+none. `HookInstaller.uninstall(as:socket:)` does all of it: the app's
+listing (`HookSocket.unregister`, only the link to its own socket),
+then, with no other app listed, each agent's entries and the
+`agent-hook` they ran, and it says what it took out and what it left.
+A listing doesn't say whose app it is, so an app with copies of its own
+listed beside it, each hearing its entries, names them (`copies`) and
+they don't keep the entries.
 
 ## 2. The hook client
 
@@ -467,7 +473,7 @@ dispatchMain()
 The library has a few more pieces for apps:
 
 - `HookInstaller` installs, checks and repairs the hooks, from your
-  own app.
+  own app, and takes your app out again (`uninstall(as:socket:)`, §1).
 - `Place` and `Places` name a folder's project and workspace.
 - `ThreadLink` opens a session's thread where it runs: in the Claude or
   Codex app by a link (a Remote Control session's by its remote

@@ -523,6 +523,22 @@ import Testing
         #expect(HookSocket.destinations(environment: env.merging(["AGENT_HOOKS_SOCKET": "/tmp/t.sock"]) { $1 }) == ["/tmp/t.sock"])
     }
 
+    /// An app takes its own listing out, the link to its socket, and only
+    /// that: a link by its name to another socket stays.
+    @Test func testUnregisterTakesOutOnlyTheAppsOwnLink() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ah-\(getpid())-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let env = ["AGENT_HOOKS_DIR": root.path]
+        let app = root.appendingPathComponent("app.sock").path, dir = HookSocket.directory(environment: env)
+        #expect(try !HookSocket.unregister(app, as: "one", environment: env), "nothing listed")
+        try HookSocket.register(root.appendingPathComponent("other.sock").path, as: "one", environment: env)
+        #expect(try !HookSocket.unregister(app, as: "one", environment: env), "another socket's")
+        #expect(HookSocket.destinations(environment: env) == [dir + "/one.sock"])
+        try HookSocket.register(app, as: "one", environment: env)
+        #expect(try HookSocket.unregister(app, as: "one", environment: env))
+        #expect(HookSocket.destinations(environment: env) == [])
+    }
+
     /// The socket folder is this user's alone (0700). The
     /// client sends nowhere while others can write to it, and registering
     /// tightens a folder an older version left open.

@@ -45,13 +45,25 @@ public enum HookSocket {
         try fm.createSymbolicLink(atPath: link, withDestinationPath: path)
     }
 
+    /// Takes `name.sock` out of `directory` when it's the link to the
+    /// app's socket at `path` that `register` made: another app's, or a
+    /// link elsewhere by that name, stays. True when it took it out.
+    @discardableResult
+    public static func unregister(_ path: String, as name: String,
+                                  environment: [String: String] = ProcessInfo.processInfo.environment) throws -> Bool {
+        let link = directory(environment: environment) + "/" + name + ".sock"
+        guard (try? FileManager.default.destinationOfSymbolicLink(atPath: link)) == path else { return false }
+        try FileManager.default.removeItem(atPath: link)
+        return true
+    }
+
     /// The apps listed in `directory`, by the names they listed themselves
     /// as (`register`), in name order: each `*.sock` there that's a link,
     /// which stays while its app is closed, or a socket something listens
     /// at now (`agent-hooks tail`'s). A socket left behind with nobody
     /// listening isn't an app. The hooks' entries are every app's, so an
     /// app that uninstalls itself takes its own listing out first, and the
-    /// entries only if no other app is listed.
+    /// entries only if no other app is listed (`HookInstaller.uninstall`).
     public static func listed(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
         let dir = directory(environment: environment)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []

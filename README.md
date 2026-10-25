@@ -230,6 +230,10 @@ In Swift, add this package and use its `AgentHooks` library:
 .product(name: "AgentHooks", package: "AgentHooks"),
 ```
 
+When your app uninstalls itself, `HookInstaller.uninstall(as:socket:)`
+takes it out: its link, then the hooks, unless another app still
+listens.
+
 From any other language, listen on a Unix socket, link it into
 `~/.agent-hooks/sockets/`, and read one JSON line per hook, as in step 2
 above.

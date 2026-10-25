@@ -160,11 +160,75 @@ public struct HookInstaller {
 
     /// Removes its entries, current and old, and nothing else. They're
     /// every app's: an app uninstalling itself removes them only once no
-    /// other app is listed (`HookSocket.listed`), or the others go deaf,
-    /// since `repair` adds nothing for an agent that has none.
+    /// other app is listed (`uninstall(as:socket:)`), or the others go
+    /// deaf, since `repair` adds nothing for an agent that has none.
     public func remove(_ agent: Agent) throws {
         let root = try read(agent).get()
         try write(removing(from: root), agent)
+    }
+
+    /// What `uninstall(as:socket:)` took out, what it left for another
+    /// app, and what it couldn't take out, in words for a log.
+    public struct Uninstalled: Equatable, Sendable {
+        public var removed: [String] = []
+        public var kept: [String] = []
+        public var problems: [String] = []
+        public init() {}
+    }
+
+    /// Takes an app out, as its own uninstall does, in order: its listing
+    /// `name`, when it's the link to its socket at `socket`
+    /// (`HookSocket.unregister`); then, only when no other app is listed
+    /// (`HookSocket.listed`), each agent's entries where it has some,
+    /// while `agent-hook` is still there to recognise them, and the
+    /// `agent-hook` they ran, with its folder once that's empty. The
+    /// entries are every app's, so while another app is listed, open or
+    /// closed, they stay, and so does the client they run, until that
+    /// app's repair points them at its own. `copies` names the listings
+    /// that are this app's own other copies, which hear its entries and
+    /// so don't keep them: a listing doesn't say whose app it is, so only
+    /// the app knows.
+    public func uninstall(as name: String, socket: String, copies: (String) -> Bool = { _ in false },
+                          environment: [String: String] = ProcessInfo.processInfo.environment) -> Uninstalled {
+        var result = Uninstalled()
+        do {
+            if try HookSocket.unregister(socket, as: name, environment: environment) { result.removed.append("the socket's listing") }
+        } catch {
+            result.problems.append("the socket's listing: \(error)")
+        }
+        let others = HookSocket.listed(environment: environment).filter { !copies($0) }
+        guard others.isEmpty else {
+            result.kept.append("the hooks and \(Self.client), for \(others.joined(separator: ", "))")
+            return result
+        }
+        let fm = FileManager.default
+        for agent in Agent.allCases {
+            let ours: Bool = switch health(agent) {
+            case .installed, .outdated, .hooksOff: true
+            // Without the client its entries can't be told apart from
+            // none: remove them anyway when the agent's file is there.
+            case .clientMissing: fm.fileExists(atPath: configURL(agent).path)
+            case .notInstalled, .unreadable: false
+            }
+            guard ours else { continue }
+            do {
+                try remove(agent)
+                result.removed.append("\(agent.rawValue)'s hooks")
+            } catch {
+                result.problems.append("\(agent.rawValue)'s hooks: \(error)")
+            }
+        }
+        let client = URL(fileURLWithPath: hookPath)
+        guard fm.fileExists(atPath: client.path) else { return result }
+        do {
+            try fm.removeItem(at: client)
+            result.removed.append(Self.client)
+            let bin = client.deletingLastPathComponent()
+            if (try? fm.contentsOfDirectory(atPath: bin.path))?.isEmpty == true { try? fm.removeItem(at: bin) }
+        } catch {
+            result.problems.append("\(Self.client): \(error)")
+        }
+        return result
     }
 
     /// Brings back missing or outdated entries for agents that already have
