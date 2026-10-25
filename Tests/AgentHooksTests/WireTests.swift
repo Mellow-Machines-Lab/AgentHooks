@@ -16,7 +16,7 @@ import Testing
         ])
         let line = try #require(HookLine.extract(agent: "claude", payload: raw, ts: 42))
         #expect(line == (HookLine(agent: "claude", hook: "PreToolUse", session: "s1", cwd: "/w/landing",
-                                      tool: "Bash", topic: "tests", ts: 42)))
+                                      tool: "Bash", topic: "tests", program: "npm test", ts: 42)))
         let wire = String(decoding: line.encoded(), as: UTF8.self)
         #expect(!wire.contains("SECRET"))
         #expect(!wire.contains("transcript"))
@@ -172,7 +172,7 @@ import Testing
             "is_interrupt": false,
         ]), ts: 0))
         #expect(failure == (HookLine(agent: "claude", hook: "PostToolUseFailure", session: "s", tool: "Bash", topic: "tests",
-                                         toolError: "exit_code", ts: 0)))
+                                         program: "npm test", toolError: "exit_code", ts: 0)))
         let wire = String(decoding: failure.encoded(), as: UTF8.self)
         #expect(!(wire.contains("PRIVATE") || wire.contains("interrupt")), "\(wire)")
         let interrupted = try #require(HookLine.extract(agent: "claude", payload: payload([

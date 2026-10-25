@@ -34,7 +34,8 @@ if ["claude", "codex"].contains(agent),
    let line = HookLine.extract(agent: agent, payload: payload, ts: started, codexHome: ThreadName.codexHome,
                                env: environment, tty: TerminalTab.controllingTTY(),
                                process: AgentProcess.find(agent: agent, env: environment), keepText: keepText,
-                               topics: Topic.extraPatterns(environment: environment)) {
+                               topics: Topic.extraPatterns(environment: environment),
+                               words: Program.ownWords(environment: environment)) {
     let data = line.encoded()
     for destination in HookSocket.destinations(environment: environment) {
         HookSocket.send(data, to: destination)

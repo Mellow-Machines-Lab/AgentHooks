@@ -66,6 +66,11 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     /// What a tool call is about: `tests`, `build`, `deploy`, `docs` or
     /// `inspect` (`Topic`).
     public var topic: String?
+    /// A shell call's program, as a word from a closed list (`Program`):
+    /// `grep`, `git log`, `run`. Never its arguments.
+    public var program: String?
+    /// An edit's file type, its first file's extension (`swift`).
+    public var fileType: String?
     /// An edit tool call's lines added and removed (`EditSize`): on a start,
     /// what it will change if it goes ahead; on an end, what it changed.
     /// Only counts, never the text.
@@ -138,8 +143,8 @@ public struct AgentEvent: Equatable, Codable, Sendable {
     /// back as it was.
     enum CodingKeys: String, CodingKey {
         case agent, kind, phase, hook, session, at, subagent, cwd, name, app, terminal, mode, source, prompt, tool, topic,
-             failed, error, asking, notice, outcome, message, process
-        case subagentType = "subagent_type", appSession = "app_session", toolUseID = "tool_use_id",
+             program, failed, error, asking, notice, outcome, message, process
+        case fileType = "file_type", subagentType = "subagent_type", appSession = "app_session", toolUseID = "tool_use_id",
              linesAdded = "lines_added", linesRemoved = "lines_removed", todoID = "todo_id", todoStatus = "todo_status",
              todosDone = "todos_done", todosTotal = "todos_total"
     }
