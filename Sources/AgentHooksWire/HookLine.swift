@@ -149,8 +149,9 @@ public struct HookLine: Equatable, Sendable {
     /// gets the thread's name (`ThreadName`); without it, neither agent's
     /// is looked up. `env` is the hook's environment, which says what app
     /// the agent runs in (`HostApp`, with `home`, where Claude Code keeps
-    /// its config folder unless `env` says) and where in a terminal
-    /// (`TerminalTab`, with `tty`, the agent's controlling terminal).
+    /// its config folder unless `env` says, and the Claude app its records)
+    /// and where in a terminal (`TerminalTab`, with `tty`, the agent's
+    /// controlling terminal).
     /// `process` is the agent's (`AgentProcess.find`). `keepText` keeps
     /// your prompt and the agent's last message; `topics`
     /// adds command patterns to the topic tags (`Topic.extraPatterns`),
@@ -160,10 +161,14 @@ public struct HookLine: Equatable, Sendable {
                                env: [String: String] = [:], tty: String? = nil, process: AgentProcess? = nil,
                                home: String = NSHomeDirectory(), keepText: Bool = false,
                                topics: [String: [[String]]] = [:], words: Set<String> = []) -> HookLine? {
-        guard var line = (try? JSONSerialization.jsonObject(with: payload) as? [String: Any])
-            .flatMap({ extract(agent: agent, json: $0, ts: ts, codexHome: codexHome, keepText: keepText, topics: topics,
-                               words: words) })
+        let json = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any]
+        guard var line = json.flatMap({ extract(agent: agent, json: $0, ts: ts, keepText: keepText, topics: topics,
+                                                words: words) })
             ?? salvage(agent: agent, payload: payload, ts: ts) else { return nil }
+        if let codexHome, let json {
+            line.name = ThreadName.find(agent: agent, json: json, session: line.session, codexHome: codexHome,
+                                        env: env, pid: process?.pid, home: home, wide: !perCall.contains(line.hook))
+        }
         line.app = HostApp.bundleID(agent: agent, env: env)
         line.appSession = HostApp.session(agent: agent, env: env, hook: line.hook, pid: process?.pid, home: home)
         line.terminal = TerminalTab.from(env: env, tty: tty)
@@ -171,9 +176,10 @@ public struct HookLine: Equatable, Sendable {
         return line
     }
 
-    public static func extract(agent: String, json: [String: Any], ts: Int64, codexHome: String? = nil,
-                               keepText: Bool = false, topics: [String: [[String]]] = [:],
-                               words: Set<String> = []) -> HookLine? {
+    /// The kept fields of a parsed payload, without the thread's name or
+    /// anything from the hook's environment.
+    public static func extract(agent: String, json: [String: Any], ts: Int64, keepText: Bool = false,
+                               topics: [String: [[String]]] = [:], words: Set<String> = []) -> HookLine? {
         guard let hook = string(json["hook_event_name"]) ?? string(json["hookEventName"]),
               let session = string(json["session_id"]) ?? string(json["thread_id"]) ?? string(json["conversation_id"])
         else { return nil }
@@ -214,10 +220,6 @@ public struct HookLine: Equatable, Sendable {
             line.kind = string(json["notification_type"])
         default:
             break
-        }
-        if let codexHome {
-            line.name = ThreadName.find(agent: agent, json: json, session: session, codexHome: codexHome,
-                                        wide: !perCall.contains(hook))
         }
         return line
     }

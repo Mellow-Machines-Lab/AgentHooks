@@ -1,6 +1,6 @@
 # How agent-hooks works
 
-Updated 2026-10-24. [README.md](README.md) is the short version. This is
+Updated 2026-10-25. [README.md](README.md) is the short version. This is
 the tour: how the hooks get installed, what happens each time one fires,
 and how that becomes a list of sessions. The code and its tests have
 every rule.
@@ -190,12 +190,45 @@ terminal (`claude rc`), and its hooks have the terminal's bundle ID. But
 Claude app instead, and its `app_session` is the remote session's ID,
 `session_…`, which the app's links open. That ID is in Claude Code's
 record of the agent's process, `sessions/<pid>.json` in its config folder
-(`$CLAUDE_CONFIG_DIR`, else `~/.claude`): the client reads only that
-file, only its first 64 KB, and keeps only its `bridgeSessionId`, when
-it has its shape. It reads it only on the hooks that start a session or
-a turn (`SessionStart`, `UserPromptSubmit`), so a tool call reads no
-file; the tracker keeps the last one it was sent. Without it, the session still opens in the Claude
-app, which is brought forward.
+(`$CLAUDE_CONFIG_DIR`, else `~/.claude`): the client reads only its
+first 64 KB, and keeps only its `bridgeSessionId`, when it has its
+shape, and the thread's name (below). It sends the ID only on the hooks
+that start a session or a turn (`SessionStart`, `UserPromptSubmit`);
+the tracker keeps the last one it was sent. Without it, the session
+still opens in the Claude app, which is brought forward.
+
+### The thread's name
+
+The `name` is the thread's title as its agent's app shows it. Neither
+agent documents where it keeps titles, so the client tries a few places
+in turn and takes the first that has one. A place it can't read, or
+whose shape has changed, just gives nothing, and a thread with no title
+found has no `name`; an app shows something else, like the project.
+
+For Claude:
+
+1. **The Claude app's**, for a session it runs: `title` in its record
+   of the session,
+   `~/Library/Application Support/Claude/claude-code-sessions/<account>/<org>/<id>.json`,
+   where the ID is `CLAUDE_CODE_HOST_SESSION_ID` (`local_…`), when the
+   record says it's that session.
+2. **One you gave it**, by renaming the thread: the hook's own
+   `session_title`, on `SessionStart` and `UserPromptSubmit`, else the
+   last `custom-title` in its transcript.
+3. **The one in Claude Code's record of the agent's process**
+   (*Remote Control*, above), when the record says where it came from
+   (`nameSource`) and it isn't one made from the folder (`derived`). By
+   Remote Control the thread's title is the remote session's, which
+   Claude Code puts there once it has it; until then there's none.
+4. **The one Claude made up**, the last `ai-title` in its transcript.
+
+For Codex, the last `thread_name` its index gives the thread
+(`session_index.jsonl` in `$CODEX_HOME`, else `~/.codex`).
+
+Every hook looks, so a title that arrives mid-turn shows at once. Only
+the transcript costs much to read: a tool call's hooks read its last
+256 KB, the others up to its last 4 MB. Of every file only the title
+leaves.
 
 ### Which terminal tab
 
@@ -509,7 +542,7 @@ The library has a few more pieces for apps:
 ## Good to know
 
 - **Some of it reads undocumented internals**: the thread's name
-  (Claude's transcript, Codex's `session_index.jsonl`), which app the
+  (*The thread's name*, above), which app the
   agent runs in, its terminal tab, a Remote Control session's ID
   (Claude Code's `sessions/<pid>.json`), the shape of Claude's edit
   results, its task tools and Codex's `PostToolUse` and `update_plan`

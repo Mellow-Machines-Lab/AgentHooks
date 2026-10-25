@@ -57,9 +57,9 @@ import Testing
         }
     }
 
-    /// The record is read only on hooks that start a session or a turn,
-    /// so a tool call reads no file; the tracker keeps the ID it was sent,
-    /// and the app the hook's environment says comes on every hook.
+    /// The remote session's ID comes only on hooks that start a session or
+    /// a turn; the tracker keeps the ID it was sent, and the app the hook's
+    /// environment says comes on every hook.
     @Test func itsRecordIsReadOnlyAsASessionOrTurnStarts() throws {
         #expect(HostApp.recordHooks == ["SessionStart", "UserPromptSubmit"])
         try withConfig(record()) { config in
@@ -76,6 +76,24 @@ import Testing
             }
             #expect(tracker.sessions["claude/s1"]?.appSession == Self.remote)
         }
+    }
+
+    /// Its name is the remote session's title once Claude Code has put it
+    /// in its record (`nameSource` `auto`); before, the name it made from
+    /// the folder (`derived`) isn't the thread's, and it has none.
+    @Test func itsNameIsTheRemoteSessionsTitleOnceClaudeCodeHasIt() throws {
+        func name(_ config: URL) -> String? {
+            let raw = Data(#"{"hook_event_name":"Stop","session_id":"s1"}"#.utf8)
+            return HookLine.extract(agent: "claude", payload: raw, ts: 1, codexHome: "/nonexistent", env: env(config),
+                                    process: AgentProcess(pid: pid, started: 1), home: "/nonexistent")?.name
+        }
+        try withConfig(#"{"pid":4242,"name":"bridge-cse-01hrj8vcv7wvgsfgwhhymub6-1e","nameSource":"derived"}"#) {
+            #expect(name($0) == nil)
+        }
+        try withConfig(#"{"pid":4242,"name":"Thread names in Mac and ESP32 apps","nameSource":"auto"}"#) {
+            #expect(name($0) == "Thread names in Mac and ESP32 apps")
+        }
+        try withConfig(record()) { #expect(name($0) == nil, "no source said") }
     }
 
     /// Without the remote session's ID, the Claude app is still where it

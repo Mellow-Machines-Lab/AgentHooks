@@ -118,6 +118,72 @@ import Testing
         #expect((ask("codex", "PermissionRequest", session: "t3")?.name) == nil)
     }
 
+    /// A Claude thread's name is the first of: the Claude app's, for a
+    /// session it runs; one you gave it (the hook's `session_title`, else
+    /// the transcript's); a named one in Claude Code's record of the
+    /// process; and the one Claude made up. A place that can't be read, or
+    /// has lost its shape, gives nothing and the next is tried.
+    @Test func claudesNameComesFromTheFirstPlaceThatHasOne() throws {
+        let home = tempDir("threadname-places")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let id = "local_3d70f836-1432-467b-b6b6-06fb9829a5b6"
+        let sessions = home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions/a1/o1")
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        let appRecord = sessions.appendingPathComponent("\(id).json")
+        let config = home.appendingPathComponent(".claude/sessions")
+        try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
+        let codeRecord = config.appendingPathComponent("4242.json")
+        let transcript = home.appendingPathComponent("t.jsonl")
+        func write(_ object: Any, to url: URL) throws {
+            try JSONSerialization.data(withJSONObject: object).write(to: url)
+        }
+        func titles(_ rows: [[String: Any]]) throws {
+            try Data(rows.map { String(decoding: payload($0), as: UTF8.self) + "\n" }.joined().utf8).write(to: transcript)
+        }
+        func name(_ extra: [String: Any] = [:], hook: String = "Stop", env: [String: String]? = nil) -> String? {
+            var object: [String: Any] = ["hook_event_name": hook, "session_id": "s", "transcript_path": transcript.path]
+            object.merge(extra) { $1 }
+            let line = HookLine.extract(agent: "claude", payload: payload(object), ts: 1, codexHome: home.path,
+                                        env: env ?? ["CLAUDE_CODE_HOST_SESSION_ID": id],
+                                        process: AgentProcess(pid: 4242, started: 1), home: home.path)
+            let wire = line.map { String(decoding: $0.encoded(), as: UTF8.self) } ?? ""
+            #expect(!wire.contains("SECRET"))
+            return line?.name
+        }
+        try write(["sessionId": id, "title": "App's title", "postTurnSummary": "SECRET"], to: appRecord)
+        try write(["pid": 4242, "name": "Process's name", "nameSource": "auto", "cwd": "/SECRET"], to: codeRecord)
+        try titles([["type": "custom-title", "customTitle": "Your title"], ["type": "ai-title", "aiTitle": "Made-up title"]])
+
+        #expect(name(["session_title": "Hook's title"]) == "App's title")
+        #expect(name(hook: "PreToolUse") == "App's title", "on a tool call too")
+        // Not the app's session, a record of another, or one that lost its shape.
+        #expect(name(["session_title": "Hook's title"], env: ["CLAUDE_CODE_HOST_SESSION_ID": "local_../x"]) == "Hook's title")
+        for record: Any in [["sessionId": "local_other", "title": "Another's"], ["sessionId": id, "title": 7], [id]] {
+            try write(record, to: appRecord)
+            #expect(name(["session_title": "Hook's title"]) == "Hook's title", "\(record)")
+        }
+        try Data("{not json".utf8).write(to: appRecord)
+        #expect(name(["session_title": "Hook's title"]) == "Hook's title")
+        try FileManager.default.removeItem(at: appRecord)
+
+        #expect(name(["session_title": "  "]) == "Your title", "a blank title is none")
+        try titles([["type": "ai-title", "aiTitle": "Made-up title"]])
+        #expect(name() == "Process's name")
+        for source in ["user", "peer", "hook"] {
+            try write(["pid": 4242, "name": "Process's name", "nameSource": source], to: codeRecord)
+            #expect(name() == "Process's name", "\(source)")
+        }
+        // Not one made from the folder, one with no source said, or another process's.
+        for record: Any in [["pid": 4242, "name": "landing-fix", "nameSource": "derived"], ["pid": 4242, "name": "x"],
+                            ["pid": 99, "name": "Another's", "nameSource": "auto"], ["pid": 4242, "nameSource": "auto"]] {
+            try write(record, to: codeRecord)
+            #expect(name() == "Made-up title", "\(record)")
+        }
+        try titles([["type": "user"]])
+        #expect(name() == nil)
+        #expect(name(env: [:]) == nil)
+    }
+
     /// A title on the first complete line of a bounded tail
     /// remains readable; only a line cut by the window is discarded.
     @Test func testThreadNameTailPreservesALineAtTheWindowBoundary() throws {

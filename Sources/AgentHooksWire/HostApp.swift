@@ -26,38 +26,41 @@ public enum HostApp {
     /// Code's own `session_id` is another. In the Claude app it's
     /// `CLAUDE_CODE_HOST_SESSION_ID`, `local_…`. By Remote Control it's
     /// the remote session's, `session_…`, which Claude Code keeps as
-    /// `bridgeSessionId` in its record of the agent's process,
-    /// `sessions/<pid>.json` in its config folder (`CLAUDE_CONFIG_DIR`, else
-    /// `~/.claude` in `home`). `pid` is the agent's (`AgentProcess`), else
-    /// `CLAUDE_PID`. Only that file is read, only its first 64 KB, and only
-    /// that one value of it is kept, when it has its shape; and only on
-    /// `recordHooks`, so a tool call reads no file.
+    /// `bridgeSessionId` in its record of the agent's process (`record`).
+    /// Only that one value of it is kept, when it has its shape, and only on
+    /// `recordHooks`.
     public static func session(agent: String, env: [String: String], hook: String, pid: Int32? = nil,
                                home: String = NSHomeDirectory()) -> String? {
         guard agent == "claude" else { return nil }
         if let id = HookLine.string(env["CLAUDE_CODE_HOST_SESSION_ID"]), id.hasPrefix("local_") { return id }
         guard isBridge(agent: agent, env: env), recordHooks.contains(hook),
-              let pid = pid ?? env["CLAUDE_PID"].flatMap({ Int32($0) }), pid > 0
-        else { return nil }
-        let folder = HookLine.string(env["CLAUDE_CONFIG_DIR"], max: 1024) ?? home + "/.claude"
-        return bridgeSession(record: folder + "/sessions/\(pid).json", pid: pid)
-    }
-
-    /// The remote session's ID in Claude Code's record of the process
-    /// `pid`, when the record is that process's and the ID has its shape.
-    static func bridgeSession(record path: String, pid: Int32) -> String? {
-        guard let file = FileHandle(forReadingAtPath: path) else { return nil }
-        defer { try? file.close() }
-        let data = file.readData(ofLength: maxRecord + 1)
-        guard data.count <= maxRecord,
-              let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              (record["pid"] as? NSNumber).map({ $0.int32Value == pid }) != false,
-              let id = record["bridgeSessionId"] as? String,
+              let id = record(env: env, pid: pid, home: home)?["bridgeSessionId"] as? String,
               remoteShapes.contains(where: { $0.matches(id) }) else { return nil }
         return id
     }
 
-    /// The hooks a Remote Control session's record is read on: those that
+    /// Claude Code's record of the agent's process, `sessions/<pid>.json`
+    /// in its config folder (`CLAUDE_CONFIG_DIR`, else `~/.claude` in
+    /// `home`), when the record is that process's. `pid` is the agent's
+    /// (`AgentProcess`), else `CLAUDE_PID`. Only its first 64 KB are read.
+    static func record(env: [String: String], pid: Int32?, home: String) -> [String: Any]? {
+        guard let pid = pid ?? env["CLAUDE_PID"].flatMap({ Int32($0) }), pid > 0 else { return nil }
+        let folder = HookLine.string(env["CLAUDE_CONFIG_DIR"], max: 1024) ?? home + "/.claude"
+        guard let record = readObject(folder + "/sessions/\(pid).json", max: maxRecord),
+              (record["pid"] as? NSNumber).map({ $0.int32Value == pid }) != false else { return nil }
+        return record
+    }
+
+    /// The JSON object in the file at `path`, when it's no larger than `max`.
+    static func readObject(_ path: String, max: Int) -> [String: Any]? {
+        guard let file = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? file.close() }
+        let data = file.readData(ofLength: max + 1)
+        guard data.count <= max else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// The hooks a Remote Control session's ID is sent on: those that
     /// start a session or a turn. The remote session's ID doesn't change
     /// in between, and an app keeps the last `app_session` it was sent.
     public static let recordHooks: Set<String> = ["SessionStart", "UserPromptSubmit"]

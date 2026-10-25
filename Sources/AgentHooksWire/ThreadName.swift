@@ -3,10 +3,13 @@ import Foundation
 
 /// A thread's name, as the agent's own app shows it, so the
 /// apps name threads as you do. Only the name leaves this
-/// type: the transcript it's read from is looked at in memory and dropped.
+/// type: the files it's read from are looked at in memory and dropped.
+/// Where each agent keeps names isn't documented, so each place is tried
+/// in turn, and one that can't be read, or no longer has the shape it
+/// had, just gives nothing; a thread with no name found has none.
 public enum ThreadName {
     /// Where Codex keeps names, in `session_index.jsonl`: `$CODEX_HOME`,
-    /// or `~/.codex`. Claude keeps them in the session's transcript.
+    /// or `~/.codex`. Claude keeps them in a few places (`claude`).
     public static var codexHome: String {
         ProcessInfo.processInfo.environment["CODEX_HOME"].flatMap { $0.isEmpty ? nil : $0 }
             ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex")
@@ -18,12 +21,16 @@ public enum ThreadName {
     static let windows = [256 * 1024, 4 * 1024 * 1024]
 
     /// The name of the thread a hook payload is from, or nil. Without
-    /// `wide`, only Claude's first window is read.
+    /// `wide`, only Claude's first window of its transcript is read.
+    /// `env` is the hook's environment, `pid` the agent's process
+    /// (`AgentProcess`), and `home` where the Claude app and Claude Code
+    /// keep their records.
     public static func find(agent: String, json: [String: Any], session: String, codexHome: String,
+                            env: [String: String] = [:], pid: Int32? = nil, home: String = NSHomeDirectory(),
                             wide: Bool = true) -> String? {
         switch agent {
         case "claude":
-            return (json["transcript_path"] as? String).flatMap { claude(transcript: $0, wide: wide) }
+            return claude(json: json, env: env, pid: pid, home: home, wide: wide)
         case "codex":
             return codex(thread: session, index: (codexHome as NSString).appendingPathComponent("session_index.jsonl"))
         default:
@@ -31,9 +38,62 @@ public enum ThreadName {
         }
     }
 
-    /// The last title in a Claude transcript: one you or the app gave it
-    /// (`custom-title`) over the one Claude made up (`ai-title`).
-    static func claude(transcript path: String, wide: Bool = true) -> String? {
+    /// A Claude thread's name, the first of: the Claude app's, for a
+    /// session it runs (`claudeApp`); one you gave it, which the hook
+    /// says as `session_title` or the transcript keeps (`custom-title`);
+    /// the one in Claude Code's record of the agent's process, which by
+    /// Remote Control can be the remote session's (`claudeCode`); and
+    /// the one Claude made up, in the transcript (`ai-title`).
+    static func claude(json: [String: Any], env: [String: String], pid: Int32?, home: String, wide: Bool) -> String? {
+        if let name = claudeApp(env: env, home: home) ?? clean(json["session_title"]) { return name }
+        let transcript = (json["transcript_path"] as? String).flatMap { claude(transcript: $0, wide: wide) }
+        return transcript?.yours ?? claudeCode(env: env, pid: pid, home: home) ?? transcript?.madeUp
+    }
+
+    /// A Claude app session's ID, `local_` and a UUID.
+    static let appSessionShape = TerminalTab.Shape(prefix: "local_", extra: "-", max: 64)
+    /// The largest app record read.
+    static let maxAppRecord = 256 * 1024
+
+    /// The name the Claude app shows for a session it runs: `title` in its
+    /// record of the session, `claude-code-sessions/<account>/<org>/<id>.json`
+    /// in its Application Support folder, where the ID is
+    /// `CLAUDE_CODE_HOST_SESSION_ID`, when the record says it's that one.
+    static func claudeApp(env: [String: String], home: String) -> String? {
+        guard let id = HookLine.string(env["CLAUDE_CODE_HOST_SESSION_ID"]), appSessionShape.matches(id) else { return nil }
+        let root = home + "/Library/Application Support/Claude/claude-code-sessions"
+        let files = FileManager.default
+        for account in (try? files.contentsOfDirectory(atPath: root)) ?? [] {
+            for org in (try? files.contentsOfDirectory(atPath: root + "/" + account)) ?? [] {
+                let path = "\(root)/\(account)/\(org)/\(id).json"
+                guard files.fileExists(atPath: path) else { continue }
+                guard let record = HostApp.readObject(path, max: maxAppRecord), record["sessionId"] as? String == id
+                else { return nil }
+                return clean(record["title"])
+            }
+        }
+        return nil
+    }
+
+    /// Where a name in Claude Code's record of a process came from
+    /// (`nameSource`) that names the thread: given by you, by another
+    /// session or by a hook, or made up, which by Remote Control is the
+    /// remote session's title. Not one made from the folder (`derived`),
+    /// nor a name with no source said.
+    static let recordNameSources: Set<String> = ["user", "auto", "peer", "hook"]
+
+    /// The name in Claude Code's record of the agent's process
+    /// (`HostApp.record`), when it says where it came from and that names
+    /// the thread.
+    static func claudeCode(env: [String: String], pid: Int32?, home: String) -> String? {
+        guard let record = HostApp.record(env: env, pid: pid, home: home),
+              let source = record["nameSource"] as? String, recordNameSources.contains(source) else { return nil }
+        return clean(record["name"])
+    }
+
+    /// The last titles in a Claude transcript: one you or the app gave it
+    /// (`custom-title`), and the one Claude made up (`ai-title`).
+    static func claude(transcript path: String, wide: Bool = true) -> (yours: String?, madeUp: String?)? {
         var aiTitle: String?
         for window in wide ? windows : [windows[0]] {
             guard let (data, whole) = tail(of: path, bytes: window) else { return nil }
@@ -41,7 +101,7 @@ public enum ThreadName {
                 guard let object = object(line) else { continue }
                 switch object["type"] as? String {
                 case "custom-title":
-                    if let title = clean(object["customTitle"]) { return title }
+                    if let title = clean(object["customTitle"]) { return (title, aiTitle) }
                 case "ai-title":
                     if aiTitle == nil { aiTitle = clean(object["aiTitle"]) }
                 default:
@@ -50,7 +110,7 @@ public enum ThreadName {
             }
             if aiTitle != nil || whole { break }
         }
-        return aiTitle
+        return (nil, aiTitle)
     }
 
     /// The last name Codex's index gives the thread.
