@@ -64,7 +64,7 @@ Only the hook client stands apart: it's kept tiny so it starts fast.
 - **Your words stay put.** The client sends the hook's name, the
   session, the folder, the tool's name, the permission mode, which app
   the agent runs in and which of its terminal's tabs, the agent's
-  process ID (so a request stops waiting when its agent is gone), an edit's lines
+  process ID (so a session ends when its agent is gone), an edit's lines
   added and removed and its file type, a command's program from a closed
   list (`grep`, `git log`, else `run`), the to-do list's items done and in
   all (counts only), and the thread's title as that app
@@ -103,10 +103,11 @@ Each event says two things:
 
 The library's `SessionTracker` follows the events and keeps each session
 **working**, **idle** or **needs you**, with its turn and its to-do list.
-A session needs you for as long as its agent waits, up to a silent day;
-when the agent's process ends, its request clears and it stops working,
-and the session stays, idle. A turn silent an hour isn't working, since
-its end may have been lost. [ARCHITECTURE.md](ARCHITECTURE.md)
+A session needs you for as long as its agent waits, up to a silent day.
+It ends without its `SessionEnd` too: when its agent's process ends,
+when you archive it in the Claude or Codex app, or when a newer thread
+takes its process (`/clear`); its next prompt brings it back. A turn
+silent an hour isn't working, since its end may have been lost. [ARCHITECTURE.md](ARCHITECTURE.md)
 lists every field an event carries.
 
 ## One event, start to finish

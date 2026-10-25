@@ -167,9 +167,10 @@ leaves, even with `--keep-text`.
 
 ### The agent's process
 
-So an app can tell an agent waiting on you, or working, from one
-that's gone (its terminal closed, it crashed, its app quit) without a
-`SessionEnd`, the client finds the agent's process (`AgentProcess`): it
+So an app can tell a session that's there from one that's gone (its
+terminal closed, it crashed, its app quit) without a `SessionEnd`
+(§5, *When a session ends*), the client finds the agent's process
+(`AgentProcess`): it
 walks up from its parent, at most 8 up, to Claude Code's `CLAUDE_PID`
 when that's one of them, else to the first that isn't a shell (`sh`,
 `bash`, `zsh`, `dash`, `fish`, `ksh`, `tcsh`, `csh`) or a wrapper that
@@ -390,15 +391,11 @@ It has to be right every time, and the hooks don't make that easy:
   mustn't bring it back.
 - **Nothing reports an answer.** No hook says you approved or pressed
   Esc, so the next event has to say.
-- **Nothing reports an agent gone.** Close its terminal and no
-  `SessionEnd` comes. So every 5 s, the tracker checks each session
-  silent that long that waits on you or works: if its agent's process
-  has ended, its request clears and its turn stops, and the session
-  stays, idle. The tracker says so (`agentGone`), so an app can tell
-  that from an answer, and `agent-hooks tail --sessions` marks the
-  session's `idle` line `"agent_gone":true`. While the process runs, a
-  request waits however long it's silent, up to a day. A Mac that
-  slept needs nothing special: the next check sees.
+- **Nothing reports a session gone.** Close its terminal, archive it in
+  its app, or `/clear` it, and the `SessionEnd` may never come. While
+  the process runs, a request waits however long it's silent, up to a
+  day. A Mac that slept needs nothing special: the next check sees.
+  *When a session ends*, below, has the rules.
 - **A turn's end can be lost.** The client gives each app 50 ms and
   never retries, and an interrupt may send no hook at all. So a turn
   silent an hour isn't working, whatever its process: a turn sends a
@@ -406,15 +403,53 @@ It has to be right every time, and the hooks don't make that easy:
   (Claude's commands time out at 10 minutes). Only waiting lasts as
   long as the agent does.
 
-An idle session's process isn't checked: one process can outlive many
-sessions (the Codex app's one server, a new thread in a running CLI),
-and one may end with each turn. Any session is forgotten after a
-silent day, one waiting on you included, so the table is what the last
-day of events rebuilds, as an app that reads a day back at launch
-does. A session with no process to check (from an older hook client)
-stops needing you after 10 silent minutes, whatever happened; the
-tracker says so (the request expired), and `agent-hooks tail
---sessions` marks that line `"expired":true`.
+### When a session ends
+
+A session ends with its `SessionEnd`, and, since that can be lost or
+never sent, when the tracker can tell it's gone. Every 5 s it checks
+each session silent that long, by how its kind of session lasts
+(`Lifetime`, a case for each agent):
+
+| Where it runs | Its process ends | Archived in its app | A newer thread starts in its process |
+| --- | --- | --- | --- |
+| Claude Code in a terminal | ends | | ends, once idle |
+| Claude Code by Remote Control | ends (archiving it on claude.ai ends its process) | | ends, once idle |
+| The Claude app's own thread (`local_…`) | stops waiting and working, and stays, idle | ends, once idle | |
+| The Codex CLI | ends | ends, once idle | ends, once idle |
+| The Codex app, whose one server runs every thread | ends | ends, once idle | |
+
+- **Its process ends.** A thread in the Claude app outlives its
+  process: the app starts it again when you open it. So there, its
+  request clears and its turn stops, and the tracker says so
+  (`agentGone`); `agent-hooks tail --sessions` marks the session's
+  `idle` line `"agent_gone":true`. It ends once its process is gone and
+  the app keeps no record of it either (you deleted it).
+- **Archived in its app** (`ThreadArchive`): the Claude app's record of
+  the session says `isArchived`; Codex moves an archived thread's
+  rollout into `archived_sessions/` in its home. Only the one fact is
+  read, and a record that can't be read, or has lost its shape, says
+  the thread is open. A session that waits or works is running,
+  whatever its app says, so it ends once idle.
+- **A newer thread starts in its process**, one that runs one thread
+  at a time: `/clear`, or `/resume` of another, whose `SessionEnd` was
+  lost. The newest to start is the one it runs; an idle session that
+  started before it ends. Not the Codex app's server, nor a Claude app
+  thread.
+
+The tracker says why each ended (`sessionGone`: `process`, `archived`
+or `replaced`), and `agent-hooks tail --sessions` puts it on the
+session's `gone` line (`"why":"archived"`). A session that ended this
+way is gone as if its `SessionEnd` had come: its late hooks don't bring
+it back, and its next start or prompt does. When nothing can tell, an
+app can end one by hand (`end(_:at:)`, say for a row you put away), to
+the same effect.
+
+Any session is forgotten after a silent day, one waiting on you
+included, so the table is what the last day of events rebuilds, as an
+app that reads a day back at launch does. A session with no process to
+check (from an older hook client) stops needing you after 10 silent
+minutes, whatever happened; the tracker says so (the request expired),
+and `agent-hooks tail --sessions` marks that line `"expired":true`.
 
 ## The command line
 
@@ -455,15 +490,20 @@ Three pieces do the work:
 - `Mapping.event(from:)` turns each line into an `AgentEvent`.
 - `SessionTracker` keeps the sessions. Touch it from one queue, and call
   `advance(to:)` about once a second so its timers run. It returns what
-  the timers did that the table can't show: each session that stopped
-  because its agent is gone (`agentGone`), and each request that expired
-  (`requestExpired`).
+  the timers did that the table can't show: each session that ended
+  with no `SessionEnd`, and why (`sessionGone`), each Claude app thread
+  that stopped because its agent is gone (`agentGone`), and each
+  request that expired (`requestExpired`). An app that folds only a log
+  it reads back passes `isRunning` and `archive` that say every process
+  runs and every thread is open, and records what the live tracker
+  said instead.
   `handle` runs the timers due by its event's time
   too, so to hear those, call `advance(to: event.at, sparing: event.key)`
   first.
 
 This prints each time an agent starts waiting on you, and each time one
-is gone or a request nobody answered expires:
+ends without its `SessionEnd`, stops because its agent quit, or has a
+request nobody answered expire:
 
 ```swift
 import AgentHooks
@@ -502,6 +542,7 @@ final class Watcher: @unchecked Sendable {
     func report(_ timers: [String: SessionTracker.Change]) {
         for (key, change) in timers.sorted(by: { $0.key < $1.key }) {
             switch change {
+            case .sessionGone(let why): print("\(key) ended: \(why.rawValue)")
             case .agentGone: print("\(key) stopped: its agent quit")
             case .requestExpired: print("\(key) stopped waiting: nobody answered in 10 minutes")
             default: break
@@ -544,11 +585,13 @@ The library has a few more pieces for apps:
 - **Some of it reads undocumented internals**: the thread's name
   (*The thread's name*, above), which app the
   agent runs in, its terminal tab, a Remote Control session's ID
-  (Claude Code's `sessions/<pid>.json`), the shape of Claude's edit
+  (Claude Code's `sessions/<pid>.json`), whether a thread is archived
+  (*When a session ends*, above), the shape of Claude's edit
   results, its task tools and Codex's `PostToolUse` and `update_plan`
   input (none yet recorded), and what Claude's idle notification means. An agent
   update can break these. If one does, the name goes missing or the
-  thread doesn't open, but the events still come.
+  thread doesn't open, or an archived thread lasts until its process
+  ends or a silent day passes, but the events still come.
 - **Hooks can't see everything.** No hook says you approved, so a long
   command you approved keeps "needs you" up until it finishes. Codex's
   automatic reviewer sends no hook either, so a command it approves that

@@ -5,8 +5,9 @@ import Foundation
 /// events `Mapping` makes. The rules are the fiddly part of agent-hooks:
 /// Codex's early request and its grace, a `Notification` that repeats a
 /// request its own hook makes, subagents asking alongside their parent,
-/// hooks that land after their session ended, an agent whose process
-/// ended while it waited or worked, and the safety net.
+/// hooks that land after their session ended, a session that's gone with
+/// no `SessionEnd` (its process ended, it was archived in its app, a newer
+/// thread took its process), and the safety net.
 ///
 /// It's a pure state machine with no queue or clock of its own: `handle`
 /// takes each event at its time, and `advance` runs the timers, about once
@@ -61,11 +62,11 @@ public final class SessionTracker {
         public internal(set) var terminal: TerminalTab?
         /// The permission mode the last event that had one said.
         public internal(set) var mode: String?
-        /// The agent's process, the last an event brought. It matters only
-        /// while the session waits or works: while it runs, a request waits
-        /// however long it's silent, up to a day; when it ends, the request
-        /// clears and the work stops, and the session stays, idle. Nil from
-        /// an older hook client.
+        /// The agent's process, the last an event brought: while it runs, a
+        /// request waits however long it's silent, up to a day; when it
+        /// ends, so does the session, or for a thread that outlives its
+        /// process (`Lifetime`) the request clears and the work stops, and
+        /// it stays, idle. Nil from an older hook client.
         public internal(set) var process: AgentProcess?
         /// The agent's to-do list, as its last word on it said; nil before
         /// any, once it's empty, or once a prompt finds it all done. It
@@ -76,6 +77,9 @@ public final class SessionTracker {
         public internal(set) var working = false
         public internal(set) var turn = Turn()
         public internal(set) var lastEventAt: Int64
+        /// When it last started, or a prompt did: in a process that runs
+        /// one thread at a time, the latest to start is the one it runs.
+        public internal(set) var begunAt: Int64?
         /// When "needs you" started showing.
         public internal(set) var needsSince: Int64?
         /// The number of the request it shows, in the order requests
@@ -128,6 +132,22 @@ public final class SessionTracker {
         public var thread: ThreadRef {
             ThreadRef(agent: agent.rawValue, session: id, app: app, appSession: appSession, terminal: terminal)
         }
+        /// How long it lasts when no `SessionEnd` comes, by where it runs.
+        public var lifetime: Lifetime { Lifetime.of(thread) }
+    }
+
+    /// Why a session ended with no `SessionEnd` (`sessionGone`).
+    public enum Gone: String, Equatable, Sendable {
+        /// Its agent's process ended (its terminal closed, it crashed, or
+        /// by Remote Control it was archived on claude.ai), or, for a
+        /// thread that outlives its process, that and its app keeps no
+        /// record of it.
+        case process
+        /// It was archived in its agent's app (`ThreadArchive`).
+        case archived
+        /// A newer thread started in its agent's process, which runs one at
+        /// a time (`/clear`, or `/resume` of another, without its end).
+        case replaced
     }
 
     /// What an event did to its session, for an app that reacts to it.
@@ -152,11 +172,15 @@ public final class SessionTracker {
         /// silent for 10 minutes and has no process to check (the safety
         /// net). Only `advance` says it.
         case requestExpired
-        /// Its agent's process ended while it waited or worked (its
-        /// terminal closed, it crashed, its app quit): its request cleared
-        /// and its turn stopped. The session stays, idle, and is forgotten
-        /// like any other. Only `advance` says it.
+        /// A thread that outlives its agent's process (`Lifetime`, the
+        /// Claude app's) lost its process while it waited or worked: its
+        /// request cleared and its turn stopped. The session stays, idle,
+        /// and is forgotten like any other. Only `advance` says it.
         case agentGone
+        /// The session ended with no `SessionEnd`, and why: it's gone, as
+        /// if its `SessionEnd` had come, until it starts again or you send
+        /// it a prompt. Only `advance` says it.
+        case sessionGone(Gone)
         /// Anything else that counted: a question answered, or a
         /// subagent's own turn-level hook.
         case other
@@ -176,29 +200,34 @@ public final class SessionTracker {
     public static let noticeFirstMs: Int64 = 1000
     /// The largest request number, so it fits in 32 bits.
     public static let maxRequest = Int(Int32.max)
-    /// How often, at most, `advance` checks that the agents of silent
-    /// sessions that wait or work still run, and how long a session is
-    /// silent before it's checked.
+    /// How often, at most, `advance` checks that silent sessions are still
+    /// there (their agents' processes, their threads in their apps), and
+    /// how long a session is silent before it's checked.
     public static let liveCheckMs: Int64 = 5000
 
     public private(set) var sessions: [String: Session] = [:]
     var fold = SessionFold()
     public private(set) var lastRequest: Int
     var callOrder = 0
-    /// When `advance` last checked the agents' processes.
+    /// When `advance` last checked the sessions are there.
     var lastLiveCheck: Int64?
     let place: (String) -> Place
     let isRunning: (AgentProcess) -> Bool
+    let archive: (ThreadRef) -> ThreadArchive.State
 
     /// `firstRequest` is where request numbers start: the first request
     /// shown gets the one after it. `place` names a working directory's
     /// project (`Places` caches it). `isRunning` says whether an agent's
-    /// process still runs.
+    /// process still runs, and `archive` whether a thread was archived in
+    /// its app. A tracker that folds only a log it reads back says every
+    /// process runs and every thread is open.
     public init(firstRequest: Int = 0, place: @escaping (String) -> Place = { Place.at(cwd: $0) },
-                isRunning: @escaping (AgentProcess) -> Bool = AgentProcess.isRunning) {
+                isRunning: @escaping (AgentProcess) -> Bool = AgentProcess.isRunning,
+                archive: @escaping (ThreadRef) -> ThreadArchive.State = { ThreadArchive.state($0) }) {
         lastRequest = firstRequest
         self.place = place
         self.isRunning = isRunning
+        self.archive = archive
     }
 
     // MARK: - Inputs
@@ -225,28 +254,32 @@ public final class SessionTracker {
     }
 
     /// Runs every timer due by `now`: a Codex request past its grace shows;
-    /// every 5 s, a session silent that long that waits or works, and
-    /// whose agent's process has ended, stops: its request clears and its
+    /// every 5 s, each session silent that long that's gone ends
+    /// (`gone`), and a thread that outlives its process, waiting or
+    /// working when the process ended, stops: its request clears and its
     /// turn ends; a session with no process to check that's silent 10
     /// minutes stops waiting and working; and a session silent a day is
     /// forgotten, whatever it does, so the table is what a day of events
-    /// rebuilds. A process is checked as it is when this runs, whatever
-    /// `now` says.
+    /// rebuilds. A process, or a thread in its app, is checked as it is
+    /// when this runs, whatever `now` says.
     /// `sparing` is left to its event, which comes next: its Codex request
-    /// isn't shown, nor its process checked. Returns what the timers did
-    /// that the table can't show, by session key: each request that
-    /// expired, and each session whose agent is gone.
+    /// isn't shown, nor it checked. Returns what the timers did that the
+    /// table can't show, by session key: each request that expired, each
+    /// session that ended and why, and each that stopped as its agent went.
     @discardableResult
     public func advance(to now: Int64, sparing: String? = nil) -> [String: Change] {
         var changes: [String: Change] = [:]
         if lastLiveCheck.map({ now - $0 >= Self.liveCheckMs }) ?? true {
             lastLiveCheck = now
-            // An idle session's process isn't checked: one process can
-            // outlive many sessions (an app's one server, a new thread in a
-            // running CLI), and one can end with each turn.
-            for (key, var s) in sessions
-            where key != sparing && now - s.lastEventAt >= Self.liveCheckMs && (waits(s) || isWorking(s, at: now)) {
-                guard let process = s.process, !isRunning(process) else { continue }
+            for (key, var s) in sessions.sorted(by: { $0.value.order < $1.value.order })
+            where key != sparing && now - s.lastEventAt >= Self.liveCheckMs {
+                let ended = s.process.map { !isRunning($0) } == true
+                if let why = gone(s, ended: ended, at: now) {
+                    end(key, at: now)
+                    changes[key] = .sessionGone(why)
+                    continue
+                }
+                guard ended, waits(s) || isWorking(s, at: now) else { continue }
                 if waits(s) { clearRequest(&s, now) }
                 s.working = false
                 s.turn.endTurn(at: now)
@@ -278,6 +311,42 @@ public final class SessionTracker {
         }
         fold.forgetEnds(at: now)
         return changes
+    }
+
+    /// Ends the session `key` at `now`, as its `SessionEnd` would: for an
+    /// app to let you put away one that's gone when nothing could tell.
+    /// Its later hooks don't bring it back; its next start or prompt does.
+    /// Whether there was one.
+    @discardableResult
+    public func end(_ key: String, at now: Int64) -> Bool {
+        guard sessions.removeValue(forKey: key) != nil else { return false }
+        fold.end(key, at: now)
+        return true
+    }
+
+    /// Why the silent session `s` is gone, or nil while it's there.
+    /// `ended` is whether its agent's process has ended. A session that
+    /// lasts as long as its process ends with it (`Lifetime`); a thread
+    /// that outlives it, once its app keeps no record of it either. An
+    /// idle one also ends when it was archived in its app, or when a newer
+    /// thread started in its process, which runs one at a time. One that
+    /// waits or works is running, whatever its app says.
+    func gone(_ s: Session, ended: Bool, at now: Int64) -> Gone? {
+        let life = s.lifetime
+        if ended && life.endsWithProcess { return .process }
+        let idle = !waits(s) && !isWorking(s, at: now)
+        if idle || ended {
+            switch archive(s.thread) {
+            case .archived where idle: return .archived
+            case .missing where ended: return .process
+            default: break
+            }
+        }
+        if idle, life.oneThreadPerProcess, let process = s.process,
+           sessions.values.contains(where: { $0.key != s.key && $0.process == process && ($0.begunAt ?? .min) > s.lastEventAt }) {
+            return .replaced
+        }
+        return nil
     }
 
     // MARK: - Reading
@@ -458,8 +527,10 @@ public final class SessionTracker {
         var change: Change = .other
         switch step {
         case .sessionStart:
+            s.begunAt = now
             change = .sessionStarted(source: event.source)
         case .turnStart:
+            s.begunAt = now
             s.working = true
             s.turn.prompted(at: now)
             clearWork(&s)

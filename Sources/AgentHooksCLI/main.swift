@@ -20,8 +20,10 @@ let usage = """
         each session's state as it changes (working, idle, needs_you, gone), with the pid of the process
         taken for its agent and, while that runs, its program ("process"), with "expired" when a
         request nobody answered stopped showing after 10 silent minutes (only for an agent whose process
-        can't be checked), and "agent_gone" when a session stopped waiting or working because its agent's
-        process ended.
+        can't be checked), "agent_gone" when a Claude app thread stopped waiting or working because its
+        agent's process ended, and on a "gone" line with no SessionEnd behind it, "why": "process" (its
+        agent's process ended), "archived" (archived in its app) or "replaced" (a newer thread started in
+        its process).
         Ctrl-C stops it.
     agent-hooks doctor [--hook PATH] [--home DIR]
         Status, then a made-up hook through the client to a socket of its own.
@@ -241,7 +243,8 @@ final class Tail: @unchecked Sendable {
 
     /// Prints each session whose state changed since last time, marking
     /// what the `timers` did: a request that expired unanswered, a session
-    /// that stopped because its agent is gone.
+    /// that stopped because its agent is gone, and why one ended with no
+    /// `SessionEnd`.
     func report(at time: Int64, timers: [String: SessionTracker.Change] = [:]) {
         var states: [String: String] = [:]
         let (waiting, working, idle) = tracker.grouped(at: time)
@@ -264,7 +267,12 @@ final class Tail: @unchecked Sendable {
             print(String(decoding: data, as: UTF8.self))
         }
         for key in shown.keys.sorted() where states[key] == nil {
-            print(#"{"at":\#(time),"session":"\#(key)","state":"gone"}"#)
+            // Why it ended, when no `SessionEnd` said.
+            guard case .sessionGone(let why)? = timers[key] else {
+                print(#"{"at":\#(time),"session":"\#(key)","state":"gone"}"#)
+                continue
+            }
+            print(#"{"at":\#(time),"session":"\#(key)","state":"gone","why":"\#(why.rawValue)"}"#)
         }
         shown = states
     }

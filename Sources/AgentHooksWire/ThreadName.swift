@@ -50,29 +50,13 @@ public enum ThreadName {
         return transcript?.yours ?? claudeCode(env: env, pid: pid, home: home) ?? transcript?.madeUp
     }
 
-    /// A Claude app session's ID, `local_` and a UUID.
-    static let appSessionShape = TerminalTab.Shape(prefix: "local_", extra: "-", max: 64)
-    /// The largest app record read.
-    static let maxAppRecord = 256 * 1024
-
     /// The name the Claude app shows for a session it runs: `title` in its
-    /// record of the session, `claude-code-sessions/<account>/<org>/<id>.json`
-    /// in its Application Support folder, where the ID is
-    /// `CLAUDE_CODE_HOST_SESSION_ID`, when the record says it's that one.
+    /// record of the session (`HostApp.appRecord`), where the ID is
+    /// `CLAUDE_CODE_HOST_SESSION_ID`.
     static func claudeApp(env: [String: String], home: String) -> String? {
-        guard let id = HookLine.string(env["CLAUDE_CODE_HOST_SESSION_ID"]), appSessionShape.matches(id) else { return nil }
-        let root = home + "/Library/Application Support/Claude/claude-code-sessions"
-        let files = FileManager.default
-        for account in (try? files.contentsOfDirectory(atPath: root)) ?? [] {
-            for org in (try? files.contentsOfDirectory(atPath: root + "/" + account)) ?? [] {
-                let path = "\(root)/\(account)/\(org)/\(id).json"
-                guard files.fileExists(atPath: path) else { continue }
-                guard let record = HostApp.readObject(path, max: maxAppRecord), record["sessionId"] as? String == id
-                else { return nil }
-                return clean(record["title"])
-            }
-        }
-        return nil
+        guard let id = HookLine.string(env["CLAUDE_CODE_HOST_SESSION_ID"]),
+              case .found(let record) = HostApp.appRecord(id, home: home) else { return nil }
+        return clean(record["title"])
     }
 
     /// Where a name in Claude Code's record of a process came from

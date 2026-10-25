@@ -6,7 +6,8 @@ import Testing
 /// app sees them. The app that grew these rules pins every case in its own
 /// tests too; these are the ones an app most relies on.
 @Suite final class SessionTrackerTests {
-    let tracker = SessionTracker(firstRequest: 100, place: { Place(project: ($0 as NSString).lastPathComponent) })
+    let tracker = SessionTracker(firstRequest: 100, place: { Place(project: ($0 as NSString).lastPathComponent) },
+                                 archive: { _ in .open })
     var now: Int64 = 1_000_000
 
     @discardableResult

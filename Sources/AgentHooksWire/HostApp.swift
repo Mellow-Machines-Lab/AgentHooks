@@ -51,6 +51,54 @@ public enum HostApp {
         return record
     }
 
+    /// A Claude app session's ID, `local_` and a UUID.
+    static let appSessionShape = TerminalTab.Shape(prefix: "local_", extra: "-", max: 64)
+    /// The largest app record read.
+    static let maxAppRecord = 256 * 1024
+
+    /// Whether `id` is the Claude app's ID for a session it runs itself,
+    /// not by Remote Control.
+    public static func isAppSession(_ id: String) -> Bool { appSessionShape.matches(id) }
+
+    /// What the Claude app keeps of a session it runs (`appRecord`).
+    public enum AppRecord {
+        /// Its record, which says it's that session's.
+        case found([String: Any])
+        /// None: the app's folder of records is there, and no account in it
+        /// has one. The app deleted it, or never ran the session.
+        case none
+        /// The folder, or the record, can't be read or has lost its shape.
+        case unreadable
+    }
+
+    /// The Claude app's record of the session `id` (`local_…`), from its
+    /// Application Support folder in `home`:
+    /// `claude-code-sessions/<account>/<org>/<id>.json`. Only its first
+    /// 256 KB are read.
+    public static func appRecord(_ id: String, home: String = NSHomeDirectory()) -> AppRecord {
+        guard isAppSession(id) else { return .unreadable }
+        let root = home + "/Library/Application Support/Claude/claude-code-sessions"
+        let files = FileManager.default
+        guard let accounts = try? files.contentsOfDirectory(atPath: root) else { return .unreadable }
+        var unread = false
+        for account in accounts {
+            guard let orgs = try? files.contentsOfDirectory(atPath: root + "/" + account) else {
+                // A file beside the accounts (`.DS_Store`) isn't one.
+                var folder: ObjCBool = false
+                unread = unread || (files.fileExists(atPath: root + "/" + account, isDirectory: &folder) && folder.boolValue)
+                continue
+            }
+            for org in orgs {
+                let path = "\(root)/\(account)/\(org)/\(id).json"
+                guard files.fileExists(atPath: path) else { continue }
+                guard let record = readObject(path, max: maxAppRecord), record["sessionId"] as? String == id
+                else { return .unreadable }
+                return .found(record)
+            }
+        }
+        return unread ? .unreadable : .none
+    }
+
     /// The JSON object in the file at `path`, when it's no larger than `max`.
     static func readObject(_ path: String, max: Int) -> [String: Any]? {
         guard let file = FileHandle(forReadingAtPath: path) else { return nil }
