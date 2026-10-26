@@ -254,31 +254,39 @@ import Testing
     }
 
     /// From every recorded payload, the only words that can
-    /// reach the line are your prompt and the agent's last message, and
-    /// only with `--keep-text`: no tool input or output, a to-do's words,
-    /// error text or transcript.
+    /// reach the line are your prompt, the agent's last message, a tool
+    /// call's glimpse and a program's name, and only with `--keep-text`:
+    /// no other tool input or output, a to-do's words, error text or
+    /// transcript.
     @Test func testOnlyThePromptAndLastMessageFromAnyRecordedFixtureReachTheLine() throws {
         let files = FileManager.default.enumerator(at: WireTests.fixtures, includingPropertiesForKeys: nil)!
             .compactMap { $0 as? URL }.filter { ["json", "jsonl"].contains($0.pathExtension) }
         #expect(files.count > 3)
-        var lines = 0, words = 0
+        var lines = 0, words = 0, glimpses = 0
         for file in files {
             let text = try String(contentsOf: file, encoding: .utf8)
             let payloads = file.pathExtension == "json" ? [text] : text.split(separator: "\n").map(String.init)
             for raw in payloads where !raw.isEmpty {
                 let plain = HookLine.extract(agent: "claude", payload: Data(raw.utf8), ts: 0)
-                #expect(plain?.prompt == nil && plain?.message == nil, "no words without --keep-text")
+                #expect(plain?.prompt == nil && plain?.message == nil && plain?.glimpse == nil,
+                        "no words without --keep-text")
+                #expect(!(plain.map { String(decoding: $0.encoded(), as: UTF8.self) } ?? "").contains("PRIVATE"),
+                        "\(file.lastPathComponent)")
                 guard var line = HookLine.extract(agent: "claude", payload: Data(raw.utf8), ts: 0, keepText: true)
                 else { continue }
                 lines += 1
                 if line.prompt != nil || line.message != nil { words += 1 }
+                if line.glimpse != nil { glimpses += 1 }
                 line.prompt = nil
                 line.message = nil
+                line.glimpse = nil
+                line.program = nil
                 #expect(!(String(decoding: line.encoded(), as: UTF8.self).contains("PRIVATE")), "\(file.lastPathComponent)")
             }
         }
         #expect(lines > 40)
         #expect(words > 5, "prompts and last messages do get through")
+        #expect(glimpses > 5, "glimpses do get through")
     }
 
     /// With `--keep-text`, `UserPromptSubmit` keeps what you

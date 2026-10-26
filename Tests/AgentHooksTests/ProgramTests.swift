@@ -38,6 +38,35 @@ import Testing
         #expect(Program.word(command: "acme-billing-export --all") == "run")
     }
 
+    /// When the hook keeps text, any program says its name, and its
+    /// subcommand or target when the first operand is shaped like one.
+    @Test func testAWideWordNamesAnyProgramAndItsSubcommand() {
+        let cases: [(String, String?)] = [
+            ("make -C internal test", "make test"),
+            ("FOO=1 make -j8 VERBOSE=1 fw-test", "make fw-test"),
+            ("make", "make"),
+            ("./internal/tools/boopctl sim --json", "boopctl sim"),
+            ("firmware/tools/pio.sh test -e native", "pio.sh test"),
+            (".build/debug/BoopTests", "BoopTests"),
+            ("git frobnicate", "git frobnicate"),
+            ("git -C agent-hooks log --oneline", "git log"),
+            ("terraform plan -out x", "terraform plan"),
+            ("grep -rn foo src", "grep"),
+            ("cat README.md", "cat"),
+            ("python3 tools/x.py build", "python"),
+            ("./scripts/Run.sh Main.c", "Run.sh"),
+            ("./a8F3kd92LmQ0xZ7pTe1 go", "run"),
+        ]
+        for (command, word) in cases { #expect(Program.word(command: command, wide: true) == word, "\(command)") }
+        #expect(Program.isSubcommand("db:migrate") && !Program.isSubcommand("main.c") && !Program.isSubcommand("Test"))
+    }
+
+    /// Every program on the lists is there once: a repeat in a set literal
+    /// stops the hook at launch.
+    @Test func testTheListsHaveNoRepeats() {
+        #expect(!Program.known.isEmpty && !Program.verbs.isEmpty && Program.known.count > 400)
+    }
+
     @Test func testOnlyShellCallsHaveAProgram() {
         #expect(Program.word(tool: "Bash", input: ["command": "git status"]) == "git status")
         #expect(Program.word(tool: "exec_command", input: ["cmd": ["rg", "-n", "x"]]) == "rg")
@@ -62,6 +91,19 @@ import Testing
         try Data(#"{"words": ["boopctl", "./bin/just", ""]}"#.utf8).write(to: root.appendingPathComponent("words.json"))
         #expect(Program.ownWords(environment: ["AGENT_HOOKS_DIR": root.path]) == ["boopctl", "just"])
         #expect(Program.ownWords(environment: ["AGENT_HOOKS_DIR": "/nowhere"]) == [])
+    }
+
+    /// With `--keep-text` a call carries its glimpse and its wide word.
+    @Test func testTheLineCarriesAGlimpseWhenItKeepsText() throws {
+        let payload: [String: Any] = [
+            "hook_event_name": "PostToolUse", "session_id": "s1", "tool_name": "Bash",
+            "tool_input": ["command": "./tools/boopctl sim /Users/me/work/Core.swift"],
+        ]
+        let line = try #require(HookLine.extract(agent: "claude", json: payload, ts: 1, keepText: true, home: "/Users/me"))
+        #expect(line.program == "boopctl sim" && line.glimpse == "Core.swift")
+        #expect(HookLine.decode(line.encoded())?.glimpse == "Core.swift")
+        let bare = try #require(HookLine.extract(agent: "claude", json: payload, ts: 1))
+        #expect(bare.program == "run" && bare.glimpse == nil)
     }
 
     /// The hook line carries the word and the file type from the payload,

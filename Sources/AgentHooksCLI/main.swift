@@ -7,7 +7,7 @@ import Foundation
 let usage = """
     agent-hooks install [claude|codex] [--keep-text] [--hook PATH] [--home DIR]
         Adds agent-hook to the agents' hooks (every agent found, or the one named). --keep-text keeps
-        your prompt and the agent's last message; --hook is the client to run (default: the agent-hook
+        your prompt, the agent's last message, any program's name and a glimpse of each call; --hook is the client to run (default: the agent-hook
         next to this command); --home is the home folder whose ~/.claude and ~/.codex change (default:
         $HOME).
     agent-hooks remove [claude|codex] [--home DIR]

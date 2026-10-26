@@ -111,10 +111,11 @@ size and file type, the to-do list's counts, an error's class. The one thing you
 agent wrote that leaves by default is the thread's title, as its app
 shows it, and that can sum up your prompt.
 
-Install with `--keep-text` and two more things come along: your
-prompt and the agent's last message, up to 2,000 characters each.
-Commands, tool output, a to-do's words, error text, file contents and
-transcripts never leave.
+Install with `--keep-text` and more comes along: your prompt and the
+agent's last message, up to 2,000 characters each, each tool call's
+**glimpse** (below), and the name of any program a command runs, with
+its subcommand. Whole commands, tool output, a to-do's words, error
+text, file contents and transcripts never leave.
 
 Lines go only to Unix sockets in `~/.agent-hooks/sockets/`, a folder
 only you can write to, and never over the network.
@@ -132,7 +133,7 @@ only reads. To teach it your own command shapes, add them to
 ```
 
 A shell call also gets its **program**, a word from a closed list of
-about 150 developer programs (`Program`): the first command that does
+about 420 developer programs (`Program`): the first command that does
 something, after `cd`, `echo`, `export` and the wrappers the topic
 skips, with the subcommand of the programs that have one (`grep`,
 `git log`, `npm i`, `loop` for a `for` loop). A program not on the list
@@ -143,6 +144,28 @@ them to `~/.agent-hooks/words.json`:
 ```json
 {"words": ["boopctl", "just"]}
 ```
+
+With `--keep-text` there's no list to keep up: any program says its
+name, unless it's shaped like a secret (below), and its subcommand when
+its first operand is shaped like one, a lowercase word such as `test`,
+`fw-test` or `db:migrate`. So `make -C internal test` is `make test`,
+`./tools/boopctl sim` is `boopctl sim`, and `cat README.md` stays `cat`:
+a program on the list with no subcommands keeps its operands to itself.
+
+With `--keep-text` a tool call also gets a **glimpse** (`Glimpse`): up
+to three short pieces of what it touched, picked by their shape alone,
+with no list of programs. A path gives its last part (`Core.swift`), a
+URL its host (`swift.org`), a pattern, quoted text or a script its
+longest name of letters (`maxWordBytes`), and a plain word itself
+(`HEAD..main`). It reads a command's operands, an edit's or a read's
+files, a search's pattern and path, and a web fetch's host or a search's
+words. It leaves out flags, variables, heredocs, what follows a flag
+that may take a secret (`-H`, `-u`, `-p`, `--token`, `--api-key`…), the
+words the program already says, and your user name. A piece leaves only
+if it's 2 to 24 characters of letters, digits and `._+-` with a letter,
+and isn't shaped like a key: a token's prefix (`sk-`, `ghp_`, `AKIA`…),
+16 or more hex digits, or 16 or more characters in both cases with 3
+digits, as random IDs are.
 
 An edit gets its **file type**, its first file's extension (`swift`,
 `md`), when it's eight letters or fewer.
@@ -326,7 +349,8 @@ form, so an app that keeps events as JSON reads them back with a plain
 | `tool` | `Bash` | On a `tool` event: the tool |
 | `tool_use_id` | `toolu_1` | On a `tool` start or end: which call |
 | `topic` | `tests` | What a command is about, without the command |
-| `program` | `git log` | On a shell call's `tool` start or end: its program, from a closed list, else `run` |
+| `program` | `git log` | On a shell call's `tool` start or end: its program, from a closed list, else `run`; with `--keep-text`, any program and its subcommand |
+| `glimpse` | `Core.swift maxWordBytes` | On a `tool` start or end, only with `--keep-text`: up to three pieces of what it touched, a space between each |
 | `file_type` | `swift` | On an edit's `tool` start or end: its first file's extension |
 | `lines_added`, `lines_removed` | `12`, `3` | On an edit's `tool` start or end: its size in lines, never its text |
 | `todo_id`, `todo_status` | `1`, `completed` | On a `tool` end: a task the agent created or updated, and its new status |

@@ -111,6 +111,7 @@ public enum Mapping {
             e.toolUseID = line.toolUseID
             e.topic = line.topic
             e.program = line.program
+            e.glimpse = line.glimpse
             e.fileType = line.fileType
             e.linesAdded = line.linesAdded
             e.linesRemoved = line.linesRemoved
@@ -128,6 +129,7 @@ public enum Mapping {
             e.toolUseID = line.toolUseID
             e.topic = line.topic
             e.program = line.program
+            e.glimpse = line.glimpse
             e.fileType = line.fileType
             e.linesAdded = line.linesAdded
             e.linesRemoved = line.linesRemoved

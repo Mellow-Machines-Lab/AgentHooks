@@ -4,8 +4,9 @@ import Foundation
 /// below. Tool input and file contents never get this far; the
 /// topic tag is worked out from the tool input in memory, then the input
 /// is dropped with the rest of the payload. The only words it can keep are
-/// your prompt (`UserPromptSubmit`) and the agent's last message
-/// (`Stop`), and only with `--keep-text`.
+/// your prompt (`UserPromptSubmit`), the agent's last message (`Stop`), a
+/// glimpse of each tool call (`Glimpse`) and the name of a program not on
+/// `Program`'s list, and only with `--keep-text`.
 public struct HookLine: Equatable, Sendable {
     /// `claude` or `codex`, from `agent-hook <agent>`.
     public var agent: String
@@ -16,8 +17,12 @@ public struct HookLine: Equatable, Sendable {
     public var tool: String?
     public var topic: String?
     /// A shell call's program, as a word from a closed list (`Program`):
-    /// `grep`, `git log`, `run`. Never its arguments.
+    /// `grep`, `git log`, `run`. Never its arguments, but with
+    /// `--keep-text` any program's name and subcommand (`make test`).
     public var program: String?
+    /// A tool call's glimpse, with `--keep-text`: up to three short pieces
+    /// of what it touched (`Glimpse`), a space between each.
+    public var glimpse: String?
     /// An edit's file type, its first file's extension (`swift`).
     public var fileType: String?
     /// `StopFailure`'s error as a short class (`TurnError`), e.g.
@@ -163,7 +168,7 @@ public struct HookLine: Equatable, Sendable {
                                topics: [String: [[String]]] = [:], words: Set<String> = []) -> HookLine? {
         let json = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any]
         guard var line = json.flatMap({ extract(agent: agent, json: $0, ts: ts, keepText: keepText, topics: topics,
-                                                words: words) })
+                                                words: words, home: home) })
             ?? salvage(agent: agent, payload: payload, ts: ts) else { return nil }
         if let codexHome, let json {
             line.name = ThreadName.find(agent: agent, json: json, session: line.session, codexHome: codexHome,
@@ -179,7 +184,8 @@ public struct HookLine: Equatable, Sendable {
     /// The kept fields of a parsed payload, without the thread's name or
     /// anything from the hook's environment.
     public static func extract(agent: String, json: [String: Any], ts: Int64, keepText: Bool = false,
-                               topics: [String: [[String]]] = [:], words: Set<String> = []) -> HookLine? {
+                               topics: [String: [[String]]] = [:], words: Set<String> = [],
+                               home: String = NSHomeDirectory()) -> HookLine? {
         guard let hook = string(json["hook_event_name"]) ?? string(json["hookEventName"]),
               let session = string(json["session_id"]) ?? string(json["thread_id"]) ?? string(json["conversation_id"])
         else { return nil }
@@ -194,7 +200,11 @@ public struct HookLine: Equatable, Sendable {
             line.toolUseID = string(json["tool_use_id"])
             if hook != "PermissionRequest" {
                 line.topic = Topic.tag(tool: line.tool, input: json["tool_input"], extra: topics)
-                line.program = Program.word(tool: line.tool, input: json["tool_input"], own: words)
+                line.program = Program.word(tool: line.tool, input: json["tool_input"], own: words, wide: keepText)
+                if keepText {
+                    let pieces = Glimpse.of(tool: line.tool, input: json["tool_input"], home: home)
+                    line.glimpse = pieces.isEmpty ? nil : pieces.joined(separator: " ")
+                }
                 line.fileType = Program.fileType(tool: line.tool, input: json["tool_input"])
             }
             if hook == "PreToolUse" || hook == "PostToolUse",
@@ -257,8 +267,8 @@ public struct HookLine: Equatable, Sendable {
 
     /// The optional text fields, by their names on the wire.
     static let wire: [(key: String, field: WritableKeyPath<HookLine, String?> & Sendable)] = [
-        ("cwd", \.cwd), ("tool", \.tool), ("topic", \.topic), ("program", \.program), ("file_type", \.fileType),
-        ("error", \.error), ("kind", \.kind),
+        ("cwd", \.cwd), ("tool", \.tool), ("topic", \.topic), ("program", \.program), ("glimpse", \.glimpse),
+        ("file_type", \.fileType), ("error", \.error), ("kind", \.kind),
         ("tool_error", \.toolError), ("tool_use_id", \.toolUseID), ("agent_type", \.agentType),
         ("agent_id", \.agentID), ("message", \.message), ("prompt", \.prompt), ("name", \.name),
         ("source", \.source), ("mode", \.mode), ("app", \.app), ("app_session", \.appSession),

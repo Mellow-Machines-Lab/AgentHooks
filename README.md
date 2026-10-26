@@ -69,7 +69,9 @@ Only the hook client stands apart: it's kept tiny so it starts fast.
   list (`grep`, `git log`, else `run`), the to-do list's items done and in
   all (counts only), and the thread's title as that app
   shows it (which can sum up your prompt). Commands, output, files and transcripts never
-  leave it; your prompt and the agent's last message do only if you
+  leave it; your prompt, the agent's last message, any program's name and
+  a glimpse of each call (a file's name, a word it searched for, never
+  anything shaped like a key) do only if you
   install with `--keep-text`, and a notice the agent's harness types as
   a prompt (Claude Code's that a background command finished) never
   does. Lines go only to sockets in
